@@ -2967,5 +2967,50 @@ main {
       }
     });
   </script>
+  <script>
+(function(){
+  function fix(){
+    document.querySelectorAll('div,section,dialog').forEach(function(el){
+      var cs=getComputedStyle(el);
+      if(cs.position!=='fixed'||cs.display==='none'||cs.visibility==='hidden')return;
+      if(el.querySelector('main,nav'))return;
+      if(el.getBoundingClientRect().height<window.innerHeight*0.5)return;
+      if(!el.querySelector('input,select,textarea,form'))return;
+      if(!el.dataset.sf){
+        el.dataset.sf='1';
+        el.style.setProperty('overflow-y','auto','important');
+        el.style.setProperty('touch-action','pan-y','important');
+      }
+      var card=null;
+      for(var i=0;i<el.children.length;i++){
+        if(el.children[i].querySelector('input,select,textarea,form')){card=el.children[i];break;}
+      }
+      var target=(card&&card.tagName!=='FORM')?card:el;
+      if(!target.dataset.sf2){
+        target.dataset.sf2='1';
+        target.style.setProperty('max-height','85dvh','important');
+        target.style.setProperty('height','auto','important');
+        target.style.setProperty('overflow-y','auto','important');
+        target.style.setProperty('-webkit-overflow-scrolling','touch','important');
+        target.style.setProperty('touch-action','pan-y','important');
+        target.style.setProperty('padding-bottom','64px','important');
+      }
+      target.querySelectorAll('div,form').forEach(function(d){
+        if(!d.dataset.sf3&&d.querySelectorAll('input,select,textarea').length>=2){
+          d.dataset.sf3='1';
+          d.style.setProperty('flex-shrink','0','important');
+          d.style.setProperty('overflow-y','visible','important');
+          d.style.setProperty('max-height','none','important');
+          d.style.setProperty('height','auto','important');
+        }
+      });
+    });
+  }
+  new MutationObserver(fix).observe(document.body,{childList:true,subtree:true,attributes:true});
+  document.addEventListener('click',function(){setTimeout(fix,60);},true);
+  fix();
+})();
+</script>
+
 </body>
 </html>
