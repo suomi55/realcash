@@ -1,20 +1,5 @@
 <!DOCTYPE html>
 <html lang="ja">
-  <style>
-html, body {
-  height: auto !important;
-  min-height: 100% !important;
-  overflow-x: clip !important;
-  overflow-y: visible !important;
-  position: static !important;
-  touch-action: auto !important;
-}
-main {
-  height: auto !important;
-  overflow: visible !important;
-}
-</style>
-
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
@@ -66,7 +51,10 @@ main {
       color: var(--text);
       line-height: 1.5;
       -webkit-font-smoothing: antialiased;
-      overflow-x: hidden;
+      height: auto;
+      min-height: 100%;
+      overflow-x: clip;
+      overflow-y: visible;
       overscroll-behavior-y: none;
       width: 100%;
     }
@@ -175,6 +163,8 @@ main {
       margin-left: 252px;
       padding: 24px 24px 56px;
       min-width: 0;
+      height: auto;
+      overflow: visible;
     }
     .container { max-width: 1000px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
 
@@ -344,7 +334,7 @@ main {
       gap: 10px;
     }
 
-    /* 予定収入・予定収支アイテム：厳守の3段構造 */
+    /* 予定収入・予定収支・毎月固定負債アイテム：厳守の3段構造 */
     .sched-card {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -526,7 +516,7 @@ main {
     .input-yen-wrap .input { padding-left: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
     input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--indigo); cursor: pointer; flex-shrink: 0; margin-top: 1px; }
 
-    /* モーダル */
+    /* モーダル（ヘッダー・フッター固定＆フォーム内スムーズ縦スクロール対応） */
     .modal-backdrop {
       position: fixed; inset: 0; z-index: 60;
       background: rgba(15, 23, 42, 0.52);
@@ -535,21 +525,38 @@ main {
     }
     .modal {
       background: var(--surface); border-radius: 16px; width: 100%; max-width: 520px;
-      max-height: 90vh; display: flex; flex-direction: column;
+      max-height: 90vh; max-height: 90dvh; display: flex; flex-direction: column;
       box-shadow: var(--shadow-lg); overflow: hidden;
+    }
+    .modal > form {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
     }
     .modal-lg { max-width: 640px; }
     .modal-sm { max-width: 390px; }
     .modal-head {
       padding: 15px 18px; border-bottom: 1px solid var(--border);
       display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      flex-shrink: 0;
     }
     .modal-head h3 { font-size: 15.5px; font-weight: 800; }
-    .modal-body { padding: 16px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 13px; }
-    .modal-foot { padding: 12px 18px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; background: var(--bg); }
+    .modal-body {
+      padding: 16px 18px; flex: 1; min-height: 0;
+      overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+      display: flex; flex-direction: column; gap: 13px;
+    }
+    .modal-foot {
+      padding: 12px 18px max(12px, env(safe-area-inset-bottom));
+      border-top: 1px solid var(--border);
+      display: flex; justify-content: flex-end; gap: 8px;
+      background: var(--bg); flex-shrink: 0;
+    }
     @media (max-width: 640px) {
       .modal-backdrop { align-items: flex-end; padding: 0; }
-      .modal { border-radius: 20px 20px 0 0; max-height: 92vh; }
+      .modal { border-radius: 20px 20px 0 0; max-height: 92vh; max-height: 92dvh; }
       .modal-sm { border-radius: 16px; margin: 16px; align-self: center; }
     }
 
@@ -700,6 +707,7 @@ main {
     /* =========================================================
        実質キャッシュ管理 (RealCash Lite) コアエンジン
        - 外部CDN不使用 / 単一ファイル / スマホ崩れ完全ゼロ設計
+       - 既存データ互換 (STORAGE_KEY: realcash_lite_v1) + 毎月固定負債対応
        ========================================================= */
     const STORAGE_KEY = 'realcash_lite_v1';
     const WIN_PREFIX = 'REALCASH_LITE_V1::';
@@ -837,6 +845,9 @@ main {
           { id: 'liab_rakuten', name: '楽天カード（翌月引落）', balance: 46800, dueDate: clampDate(next1, 27), memo: '食費・日用品・サブスク利用分' },
           { id: 'liab_sub', name: '三井住友カード（翌月引落）', balance: 15400, dueDate: clampDate(next1, 26), memo: '交通・コンビニ決済' }
         ],
+        recurringLiabilities: [
+          { id: 'rliab_subsc', name: 'スマホ・サブスク固定枠', amount: 8500, day: 27, accountId: 'acc_bank', startMonth: ym, endMonth: '', memo: '毎月固定の引落', active: true, settledMonths: [] }
+        ],
         provisions: [
           { id: 'prov_travel', name: '旅行引当金', balance: 75000, target: 150000, memo: '帰省・温泉旅行用の積立枠' },
           { id: 'prov_tax', name: '年払い保険・税金引当', balance: 45000, target: 120000, memo: '年払い固定費の備え' }
@@ -869,6 +880,7 @@ main {
       return normalizeState({
         accounts: [{ id: 'acc_bank', name: 'メイン銀行', balance: 0 }],
         liabilities: [],
+        recurringLiabilities: [],
         provisions: [],
         transactions: [],
         scheduled: [],
@@ -880,13 +892,28 @@ main {
       const s = raw.settings || {};
       const validH = [1, 3, 6, 12];
       const validScope = ['this_month', '1', '2', '3', '6', '12'];
+      const accounts = Array.isArray(raw.accounts) && raw.accounts.length ? raw.accounts.map(a => ({
+        id: a.id || uid('acc'), name: a.name || '口座', balance: Math.round(Number(a.balance) || 0)
+      })) : [{ id: 'acc_bank', name: 'メイン銀行', balance: 0 }];
+      const defaultAccId = accounts[0].id;
+
       return {
-        accounts: Array.isArray(raw.accounts) && raw.accounts.length ? raw.accounts.map(a => ({
-          id: a.id || uid('acc'), name: a.name || '口座', balance: Math.round(Number(a.balance) || 0)
-        })) : [{ id: 'acc_bank', name: 'メイン銀行', balance: 0 }],
+        accounts,
         liabilities: Array.isArray(raw.liabilities) ? raw.liabilities.map(l => ({
           id: l.id || uid('liab'), name: l.name || 'クレカ', balance: Math.max(0, Math.round(Number(l.balance) || 0)),
           dueDate: l.dueDate || clampDate(addMonths(curYM(), 1), 27), memo: l.memo || ''
+        })) : [],
+        recurringLiabilities: Array.isArray(raw.recurringLiabilities) ? raw.recurringLiabilities.map(rl => ({
+          id: rl.id || uid('rliab'),
+          name: rl.name || '毎月固定負債',
+          amount: Math.max(0, Math.round(Number(rl.amount) || 0)),
+          day: Math.min(31, Math.max(1, Math.round(Number(rl.day) || 27))),
+          accountId: rl.accountId || defaultAccId,
+          startMonth: rl.startMonth || '',
+          endMonth: rl.endMonth || '',
+          memo: rl.memo || '',
+          active: rl.active !== false,
+          settledMonths: Array.isArray(rl.settledMonths) ? rl.settledMonths : []
         })) : [],
         provisions: Array.isArray(raw.provisions) ? raw.provisions.map(p => ({
           id: p.id || uid('prov'), name: p.name || '引当枠', balance: Math.round(Number(p.balance) || 0),
@@ -935,12 +962,26 @@ main {
     /* ---------------------------------------------------------
        コア会計計算 & 取引適用／ロールバック
        --------------------------------------------------------- */
+    function isRecurringLiabInPeriod(rl, ym) {
+      return (!rl.startMonth || ym >= rl.startMonth) && (!rl.endMonth || ym <= rl.endMonth);
+    }
+
+    function occursRecurringLiabInMonth(rl, ym) {
+      return rl.active && !(rl.settledMonths || []).includes(ym) && isRecurringLiabInPeriod(rl, ym);
+    }
+
     function getTotals() {
+      const ym0 = curYM();
       const cash = state.accounts.reduce((s, a) => s + (Number(a.balance) || 0), 0);
-      const liability = state.liabilities.reduce((s, l) => s + Math.max(0, Number(l.balance) || 0), 0);
+      const normalLiability = state.liabilities.reduce((s, l) => s + Math.max(0, Number(l.balance) || 0), 0);
+      const recurringLiability = state.recurringLiabilities.reduce(
+        (s, rl) => s + (occursRecurringLiabInMonth(rl, ym0) ? Math.max(0, Number(rl.amount) || 0) : 0),
+        0
+      );
+      const liability = normalLiability + recurringLiability;
       const provision = state.provisions.reduce((s, p) => s + (Number(p.balance) || 0), 0);
       const free = cash - liability - provision;
-      return { cash, liability, provision, free };
+      return { cash, liability, normalLiability, recurringLiability, provision, free };
     }
 
     // dir = +1 で適用、dir = -1 で完全ロールバック
@@ -1021,7 +1062,7 @@ main {
         let mInc = 0, mExp = 0, mSettle = 0, mRes = 0;
         const lines = [];
 
-        // 1. 確定負債の引き落とし予定（手元キャッシュのみ減額し、実質フリーからは二重控除しない）
+        // 1a. 確定負債（カード・単発）の引き落とし予定（手元キャッシュのみ減額し、実質フリーからは二重控除しない）
         state.liabilities.forEach(l => {
           if (l.balance <= 0) return;
           const dueYm = (l.dueDate || '').slice(0, 7);
@@ -1033,6 +1074,30 @@ main {
               kind: 'settlement', dateLabel: (l.dueDate || '').slice(5).replace('-', '/') || '予定',
               title: `${l.name} 引落予定`, note: '手元キャッシュのみ減少（実質フリー控除済）',
               amount: l.balance, freeDelta: 0, schedId: null
+            });
+          }
+        });
+
+        // 1b. 毎月固定の負債（今月分は実質フリー控除済のためキャッシュのみ減額、翌月以降は両方から減額）
+        state.recurringLiabilities.forEach(rl => {
+          if (!occursRecurringLiabInMonth(rl, ym)) return;
+          const dLbl = clampDate(ym, rl.day).slice(5).replace('-', '/');
+          if (i === 0) {
+            runCash -= rl.amount;
+            mSettle += rl.amount;
+            lines.push({
+              kind: 'recurring_liab', dateLabel: dLbl, title: rl.name,
+              note: '固定負債・手元キャッシュのみ減少（実質フリー控除済）',
+              amount: rl.amount, freeDelta: 0, schedId: null, rLiabId: rl.id, canSettle: true
+            });
+          } else {
+            runCash -= rl.amount;
+            runFree -= rl.amount;
+            mSettle += rl.amount;
+            lines.push({
+              kind: 'recurring_liab', dateLabel: dLbl, title: rl.name,
+              note: `毎月固定の負債 • 引落口座: ${nameOf(state.accounts, rl.accountId)}`,
+              amount: rl.amount, freeDelta: -rl.amount, schedId: null, rLiabId: rl.id, canSettle: false
             });
           }
         });
@@ -1169,6 +1234,64 @@ main {
     }
 
     /* ---------------------------------------------------------
+       3段構造カード：毎月固定の負債レンダラー
+       --------------------------------------------------------- */
+    function renderRecurringLiabCardHTML(rl) {
+      const ym0 = curYM();
+      const isSettled = (rl.settledMonths || []).includes(ym0);
+      const inPeriod = isRecurringLiabInPeriod(rl, ym0);
+
+      let statusBadge = '';
+      if (isSettled) {
+        statusBadge = `<span class="badge b-emerald">今月精算済</span>`;
+      } else if (!inPeriod) {
+        statusBadge = `<span class="badge b-slate">対象外期間</span>`;
+      } else if (rl.active) {
+        statusBadge = `<span class="badge b-red">今月未精算</span>`;
+      } else {
+        statusBadge = `<span class="badge b-slate">一時OFF</span>`;
+      }
+
+      const periodText = (rl.endMonth || (rl.startMonth && rl.startMonth > ym0))
+        ? `${rl.startMonth ? fmtMonthShort(rl.startMonth) : ''}〜${rl.endMonth ? fmtMonthShort(rl.endMonth) : ''}`
+        : '';
+
+      return `
+        <div class="sched-card ${rl.active ? '' : 'inactive'}">
+          <!-- 1段目：ON/OFFトグルスイッチ＋名称 ／ 金額（赤字） -->
+          <div class="sched-row-top">
+            <div class="sched-top-left">
+              <button type="button" class="switch ${rl.active ? 'on' : ''}" onclick="toggleRecurringLiabActive('${rl.id}')" aria-label="毎月固定の負債ON/OFF"></button>
+              <div class="sched-title">${esc(rl.name)}</div>
+            </div>
+            <div class="sched-amount nums text-red">${fmtYen(rl.amount)}</div>
+          </div>
+
+          <!-- 2段目：引落日・ステータス・期間バッジ＋引落口座・メモ -->
+          <div class="sched-row-meta">
+            <span class="badge b-slate nums">毎月${rl.day}日</span>
+            ${statusBadge}
+            ${periodText ? `<span class="badge b-slate nums">期間: ${esc(periodText)}</span>` : ''}
+            <span>引落口座: ${esc(nameOf(state.accounts, rl.accountId))}</span>
+            ${rl.memo ? `<span>• ${esc(rl.memo)}</span>` : ''}
+          </div>
+
+          <!-- 3段目：操作ボタン群（独立段・右寄せ） -->
+          <div class="sched-row-actions">
+            ${!isSettled && inPeriod && rl.active
+              ? `<button type="button" class="btn btn-primary btn-xs" onclick="openSettleRecurringLiabModal('${rl.id}')">今月精算</button>`
+              : ''}
+            ${isSettled
+              ? `<button type="button" class="btn btn-soft btn-xs" onclick="confirmUndoRecurringLiabSettle('${rl.id}','${ym0}')">精算取消</button>`
+              : ''}
+            <button type="button" class="btn btn-soft-indigo btn-xs" onclick="openRecurringLiabModal('${rl.id}')">編集</button>
+            <button type="button" class="btn btn-soft-red btn-xs" onclick="confirmDeleteRecurringLiab('${rl.id}')">削除</button>
+          </div>
+        </div>
+      `;
+    }
+
+    /* ---------------------------------------------------------
        ナビゲーション・全体再描画
        --------------------------------------------------------- */
     function switchTab(tab) {
@@ -1219,6 +1342,11 @@ main {
       const pFree = Math.max(0, t.free);
       const sumBar = Math.max(1, pLiab + pProv + pFree + addInc);
       const freeRate = Math.round((Math.max(0, dispFree) / Math.max(1, t.cash + addInc)) * 100);
+
+      // 未払件数（カード・単発＋今月未精算の毎月固定負債）
+      const unpaidLiabCount =
+        state.liabilities.filter(l => l.balance > 0).length +
+        state.recurringLiabilities.filter(rl => occursRecurringLiabInMonth(rl, ym0)).length;
 
       // 今月の発生ベース実質支出 vs 実際キャッシュアウト
       const curAccrual = state.transactions
@@ -1347,7 +1475,7 @@ main {
           <div class="card card-tight">
             <div class="row-between"><span style="font-size:11.5px;font-weight:700;color:var(--red);">確定負債</span><button type="button" class="btn-icon" onclick="switchTab('liabilities')" title="負債へ">→</button></div>
             <div class="nums text-red" style="font-size:19px;font-weight:800;margin-top:4px;">${fmtYen(t.liability)}</div>
-            <div style="font-size:11px;color:var(--text-muted);margin-top:3px;">未払 ${state.liabilities.filter(l => l.balance > 0).length}件</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:3px;">未払 ${unpaidLiabCount}件</div>
           </div>
           <div class="card card-tight">
             <div class="row-between"><span style="font-size:11.5px;font-weight:700;color:var(--amber);">引当金合計</span><button type="button" class="btn-icon" onclick="switchTab('provisions')" title="引当へ">→</button></div>
@@ -1479,7 +1607,12 @@ main {
     function txTargetLabel(tx) {
       if (tx.type === 'income' || tx.type === 'expense_cash') return nameOf(state.accounts, tx.accountId);
       if (tx.type === 'expense_credit') return nameOf(state.liabilities, tx.liabilityId);
-      if (tx.type === 'settlement') return `${nameOf(state.accounts, tx.accountId)} → ${nameOf(state.liabilities, tx.liabilityId)}`;
+      if (tx.type === 'settlement') {
+        if (tx.sourceRecurringLiabId) {
+          return `${nameOf(state.accounts, tx.accountId)} → ${nameOf(state.recurringLiabilities, tx.sourceRecurringLiabId)}`;
+        }
+        return `${nameOf(state.accounts, tx.accountId)} → ${nameOf(state.liabilities, tx.liabilityId)}`;
+      }
       if (tx.type === 'provision_alloc') return nameOf(state.provisions, tx.provisionId);
       if (tx.type === 'expense_provision_cash') return `${nameOf(state.provisions, tx.provisionId)} (${nameOf(state.accounts, tx.accountId)})`;
       if (tx.type === 'expense_provision_credit') return `${nameOf(state.provisions, tx.provisionId)} (${nameOf(state.liabilities, tx.liabilityId)})`;
@@ -1592,7 +1725,7 @@ main {
       if (!ids || !ids.length) return;
       openConfirm(
         ids.length === 1 ? 'この取引を削除しますか？' : `選択した${ids.length}件の取引を一括削除しますか？`,
-        '削除すると、取引種別に応じて口座残高・負債残高・引当金残高が自動で元へロールバックされます。',
+        '削除すると、取引種別に応じて口座残高・負債残高・固定負債の精算状態・引当金残高が自動で元へロールバックされます。',
         () => {
           const delSet = new Set(ids);
           const toDelete = state.transactions.filter(t => delSet.has(t.id));
@@ -1601,6 +1734,10 @@ main {
             if (tx.sourceScheduledId && tx.sourceMonth) {
               const sc = state.scheduled.find(s => s.id === tx.sourceScheduledId);
               if (sc) sc.appliedMonths = (sc.appliedMonths || []).filter(m => m !== tx.sourceMonth);
+            }
+            if (tx.sourceRecurringLiabId && tx.sourceMonth) {
+              const rl = state.recurringLiabilities.find(r => r.id === tx.sourceRecurringLiabId);
+              if (rl) rl.settledMonths = (rl.settledMonths || []).filter(m => m !== tx.sourceMonth);
             }
           });
           state.transactions = state.transactions.filter(t => !delSet.has(t.id));
@@ -1613,17 +1750,21 @@ main {
     }
 
     /* ---------------------------------------------------------
-       TAB 3: 負債・クレカ管理（スマホ上下段カード・金額編集＆精算）
+       TAB 3: 負債・クレカ管理（毎月固定の負債＋カード・単発負債）
        --------------------------------------------------------- */
     function renderLiabilities() {
       const t = getTotals();
+      const rLiabs = state.recurringLiabilities;
       document.getElementById('view-liabilities').innerHTML = `
         <div class="page-head">
           <div>
             <h2 class="page-title">負債・クレカ管理</h2>
             <p class="page-desc">確定負債の金額・引き落とし予定日を変更すると、実質フリー資金と将来予測に即時反映されます</p>
           </div>
-          <button type="button" class="btn btn-primary btn-sm" onclick="openLiabModal()">＋ 負債・カード追加</button>
+          <div class="row wrap" style="gap:6px;">
+            <button type="button" class="btn btn-red btn-sm" onclick="openRecurringLiabModal()">＋ 毎月固定の負債</button>
+            <button type="button" class="btn btn-primary btn-sm" onclick="openLiabModal()">＋ 負債・カード追加</button>
+          </div>
         </div>
 
         <div class="card" style="background:linear-gradient(135deg,#dc2626,#e11d48);color:#fff;border:none;">
@@ -1631,47 +1772,79 @@ main {
             <div>
               <div style="font-size:12px;opacity:0.9;">確定負債 未精算合計</div>
               <div class="nums" style="font-size:28px;font-weight:800;margin-top:2px;">${fmtYen(t.liability)}</div>
+              <div class="nums" style="font-size:11.5px;opacity:0.92;margin-top:4px;">
+                カード・単発 ${fmtYen(t.normalLiability)} ／ 今月の固定負債 ${fmtYen(t.recurringLiability)}
+              </div>
             </div>
             <div style="font-size:11.5px;max-width:390px;background:rgba(255,255,255,0.14);padding:10px 12px;border-radius:10px;line-height:1.45;">
-              利用時点で実質フリー資金から控除済みです。「精算」で口座から引き落としても実質フリー資金はブレません。確定明細とのズレは「編集」から直接変更できます。
+              利用時点・月初時点で実質フリー資金から控除済みです。「精算」で口座から引き落としても実質フリー資金はブレません。確定明細とのズレは「編集」から直接変更できます。
             </div>
           </div>
         </div>
 
-        ${state.liabilities.length === 0 ? `<div class="card empty">負債・カードはまだありません。「＋ 負債・カード追加」から登録できます。</div>` : `
-          <div class="grid-2">
-            ${state.liabilities.map(l => `
-              <div class="card" style="display:flex;flex-direction:column;justify-content:space-between;gap:12px;">
-                <div style="display:flex;flex-direction:column;gap:8px;">
-                  <!-- 上段：名称＋状態バッジ -->
-                  <div class="sched-row-top">
-                    <div class="sched-title" style="font-size:15px;">${esc(l.name)}</div>
-                    <span class="badge ${l.balance > 0 ? 'b-red' : 'b-emerald'}">${l.balance > 0 ? '引落待ち' : '精算済'}</span>
-                  </div>
-                  <!-- 中段：金額ボックス＋日付・メモ -->
-                  <div style="padding:11px 13px;border-radius:11px;background:var(--bg);border:1px solid var(--border);display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;">
-                    <span style="font-size:11.5px;color:var(--text-muted);font-weight:700;">現在の未払残高</span>
-                    <strong class="nums nowrap ${l.balance > 0 ? 'text-red' : 'text-emerald'}" style="font-size:22px;">${fmtYen(l.balance)}</strong>
-                  </div>
-                  <div class="sched-row-meta">
-                    <span class="badge b-slate nums">引落予定: ${fmtDate(l.dueDate)}</span>
-                    ${l.memo ? `<span>${esc(l.memo)}</span>` : ''}
-                  </div>
-                </div>
-
-                <!-- 下段：操作ボタン群 -->
-                <div style="display:flex;flex-direction:column;gap:8px;padding-top:10px;border-top:1px solid var(--border-soft);">
-                  <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
-                    <button type="button" class="btn btn-primary btn-xs" style="flex:1;" ${l.balance <= 0 ? 'disabled' : ''} onclick="openSettleModal('${l.id}')">精算</button>
-                    <button type="button" class="btn btn-soft-indigo btn-xs" style="flex:1;" onclick="openLiabModal('${l.id}')">編集</button>
-                    <button type="button" class="btn btn-soft-red btn-xs" style="flex:1;" onclick="confirmDeleteLiab('${l.id}')">削除</button>
-                  </div>
-                  <button type="button" class="btn btn-soft btn-xs" onclick="openTxModal('expense_credit','${l.id}')">＋ このカードで支出を記録</button>
-                </div>
+        <!-- セクション1：毎月固定の負債（スマホ最適化3段構造カード） -->
+        <div class="card" style="border-color:#fecaca;">
+          <div class="row-between" style="margin-bottom:12px;">
+            <div style="min-width:0;flex:1;">
+              <div class="row wrap" style="gap:6px;">
+                <h3 style="font-size:15px;font-weight:800;">毎月固定の負債</h3>
+                <span class="badge b-red">${rLiabs.length}件</span>
               </div>
-            `).join('')}
+              <p class="page-desc">毎月自動で当月分の未払負債として計上され、実質フリー資金と将来予測に連動します</p>
+            </div>
+            <button type="button" class="btn btn-soft-red btn-sm" onclick="openRecurringLiabModal()">＋ 毎月固定を追加</button>
           </div>
-        `}
+
+          ${rLiabs.length === 0
+            ? `<div class="empty">毎月固定の負債はまだ登録されていません。「＋ 毎月固定を追加」から登録できます。</div>`
+            : `<div class="stack-list">${rLiabs.map(rl => renderRecurringLiabCardHTML(rl)).join('')}</div>`}
+        </div>
+
+        <!-- セクション2：カード・単発の負債 -->
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div class="row-between">
+            <div class="row wrap" style="gap:6px;">
+              <h3 style="font-size:15px;font-weight:800;">カード・単発の負債</h3>
+              <span class="badge b-slate">${state.liabilities.length}件</span>
+            </div>
+            <button type="button" class="btn btn-soft btn-xs" onclick="openLiabModal()">＋ カード・単発を追加</button>
+          </div>
+
+          ${state.liabilities.length === 0 ? `<div class="card empty">カード・単発の負債はまだありません。「＋ 負債・カード追加」から登録できます。</div>` : `
+            <div class="grid-2">
+              ${state.liabilities.map(l => `
+                <div class="card" style="display:flex;flex-direction:column;justify-content:space-between;gap:12px;">
+                  <div style="display:flex;flex-direction:column;gap:8px;">
+                    <!-- 上段：名称＋状態バッジ -->
+                    <div class="sched-row-top">
+                      <div class="sched-title" style="font-size:15px;">${esc(l.name)}</div>
+                      <span class="badge ${l.balance > 0 ? 'b-red' : 'b-emerald'}">${l.balance > 0 ? '引落待ち' : '精算済'}</span>
+                    </div>
+                    <!-- 中段：金額ボックス＋日付・メモ -->
+                    <div style="padding:11px 13px;border-radius:11px;background:var(--bg);border:1px solid var(--border);display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;">
+                      <span style="font-size:11.5px;color:var(--text-muted);font-weight:700;">現在の未払残高</span>
+                      <strong class="nums nowrap ${l.balance > 0 ? 'text-red' : 'text-emerald'}" style="font-size:22px;">${fmtYen(l.balance)}</strong>
+                    </div>
+                    <div class="sched-row-meta">
+                      <span class="badge b-slate nums">引落予定: ${fmtDate(l.dueDate)}</span>
+                      ${l.memo ? `<span>${esc(l.memo)}</span>` : ''}
+                    </div>
+                  </div>
+
+                  <!-- 下段：操作ボタン群 -->
+                  <div style="display:flex;flex-direction:column;gap:8px;padding-top:10px;border-top:1px solid var(--border-soft);">
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
+                      <button type="button" class="btn btn-primary btn-xs" style="flex:1;" ${l.balance <= 0 ? 'disabled' : ''} onclick="openSettleModal('${l.id}')">精算</button>
+                      <button type="button" class="btn btn-soft-indigo btn-xs" style="flex:1;" onclick="openLiabModal('${l.id}')">編集</button>
+                      <button type="button" class="btn btn-soft-red btn-xs" style="flex:1;" onclick="confirmDeleteLiab('${l.id}')">削除</button>
+                    </div>
+                    <button type="button" class="btn btn-soft btn-xs" onclick="openTxModal('expense_credit','${l.id}')">＋ このカードで支出を記録</button>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          `}
+        </div>
       `;
     }
 
@@ -1776,7 +1949,7 @@ main {
         <div class="page-head">
           <div>
             <h2 class="page-title">将来予測シミュレーター</h2>
-            <p class="page-desc">予定収入・固定費・クレカ引落・変動費見込みから「〇月末にいくら残るか」を試算</p>
+            <p class="page-desc">予定収入・固定費・クレカ引落・固定負債・変動費見込みから「〇月末にいくら残るか」を試算</p>
           </div>
           <div class="seg">
             ${[[1, '1ヶ月'], [3, '3ヶ月'], [6, '6ヶ月'], [12, '1年']].map(([h, l]) =>
@@ -1904,14 +2077,24 @@ main {
                 ${open ? `
                   <div class="acc-panel">
                     ${m.lines.length === 0 ? `<div style="font-size:12px;color:var(--text-muted);padding:4px;">この月の予定項目はありません</div>` : m.lines.map(li => {
-                      const bMap = { income: ['b-emerald', '予定収入'], expense: ['b-slate', '予定支出'], settlement: ['b-red', '負債引落'], reserve: ['b-amber', '引当積立'], variable: ['b-indigo', '変動費見込'] };
+                      const bMap = {
+                        income: ['b-emerald', '予定収入'],
+                        expense: ['b-slate', '予定支出'],
+                        settlement: ['b-red', '負債引落'],
+                        recurring_liab: ['b-red', '固定負債'],
+                        reserve: ['b-amber', '引当積立'],
+                        variable: ['b-indigo', '変動費見込']
+                      };
                       const [bc, bl] = bMap[li.kind] || ['b-slate', li.kind];
+                      const amtColorCls = li.kind === 'income'
+                        ? 'text-emerald'
+                        : (li.kind === 'settlement' || li.kind === 'recurring_liab' ? 'text-red' : '');
                       return `
                         <div class="acc-line">
                           <!-- 上段：タイトル＋金額 -->
                           <div class="sched-row-top">
                             <div class="sched-title" style="font-size:13.5px;">${esc(li.title)}</div>
-                            <strong class="sched-amount nums ${li.kind === 'income' ? 'text-emerald' : (li.kind === 'settlement' ? 'text-red' : '')}" style="font-size:14.5px;">
+                            <strong class="sched-amount nums ${amtColorCls}" style="font-size:14.5px;">
                               ${li.kind === 'income' ? '+' : '-'}${fmtYen(li.amount)}
                             </strong>
                           </div>
@@ -1922,12 +2105,19 @@ main {
                             <span>${esc(li.note)}</span>
                             <span class="nums" style="margin-left:auto;font-weight:700;">フリー ${li.freeDelta === 0 ? '不変' : fmtYen(li.freeDelta, true)}</span>
                           </div>
-                          <!-- 下段：予定項目の直編集アクション -->
+                          <!-- 下段：予定項目・固定負債の直編集アクション -->
                           ${li.schedId ? `
                             <div class="sched-row-actions">
                               ${li.canApply ? `<button type="button" class="btn btn-soft-emerald btn-xs" onclick="applySchedToActual('${li.schedId}','${m.ym}')">実績反映</button>` : ''}
                               <button type="button" class="btn btn-soft-indigo btn-xs" onclick="openSchedModal(null,'${li.schedId}')">編集</button>
                               <button type="button" class="btn btn-soft-red btn-xs" onclick="confirmDeleteSched('${li.schedId}')">取消</button>
+                            </div>
+                          ` : ''}
+                          ${li.rLiabId ? `
+                            <div class="sched-row-actions">
+                              ${li.canSettle ? `<button type="button" class="btn btn-primary btn-xs" onclick="openSettleRecurringLiabModal('${li.rLiabId}')">今月精算</button>` : ''}
+                              <button type="button" class="btn btn-soft-indigo btn-xs" onclick="openRecurringLiabModal('${li.rLiabId}')">編集</button>
+                              <button type="button" class="btn btn-soft-red btn-xs" onclick="confirmDeleteRecurringLiab('${li.rLiabId}')">削除</button>
                             </div>
                           ` : ''}
                         </div>
@@ -2104,6 +2294,55 @@ main {
           saveState();
           renderAll();
           showToast(`予定「${it.title}」を取り消しました`);
+        }
+      );
+    }
+
+    /* ---------------------------------------------------------
+       毎月固定の負債アクション（ON/OFF・精算取消・削除）
+       --------------------------------------------------------- */
+    function toggleRecurringLiabActive(id) {
+      const rl = state.recurringLiabilities.find(x => x.id === id);
+      if (!rl) return;
+      rl.active = !rl.active;
+      saveState();
+      renderAll();
+      showToast(rl.active ? `固定負債「${rl.name}」を有効にしました` : `固定負債「${rl.name}」をOFFにしました`);
+    }
+
+    function confirmUndoRecurringLiabSettle(id, targetYm) {
+      const rl = state.recurringLiabilities.find(x => x.id === id);
+      if (!rl) return;
+      const relatedTxs = state.transactions.filter(t => t.sourceRecurringLiabId === id && t.sourceMonth === targetYm);
+      const msg = relatedTxs.length > 0
+        ? `${fmtMonthJP(targetYm)}分の精算マークを解除し、対応する精算取引（${relatedTxs.length}件）を削除して口座残高を元に戻します。`
+        : `${fmtMonthJP(targetYm)}分の精算済みマークを解除して未精算へ戻します。`;
+
+      openConfirm(`「${rl.name}」の精算を取り消しますか？`, msg, () => {
+        if (relatedTxs.length > 0) {
+          const delIds = new Set(relatedTxs.map(t => t.id));
+          relatedTxs.forEach(tx => applyTxEffect(tx, -1));
+          state.transactions = state.transactions.filter(t => !delIds.has(t.id));
+          relatedTxs.forEach(t => ui.selectedTx.delete(t.id));
+        }
+        rl.settledMonths = (rl.settledMonths || []).filter(m => m !== targetYm);
+        saveState();
+        renderAll();
+        showToast(`「${rl.name}」の${fmtMonthShort(targetYm)}分精算を取り消しました`);
+      });
+    }
+
+    function confirmDeleteRecurringLiab(id) {
+      const rl = state.recurringLiabilities.find(x => x.id === id);
+      if (!rl) return;
+      openConfirm(
+        `毎月固定の負債「${rl.name}」を削除しますか？`,
+        '削除すると確定負債合計および将来予測から除外されます（すでに精算済みの取引履歴は残ります）。',
+        () => {
+          state.recurringLiabilities = state.recurringLiabilities.filter(x => x.id !== id);
+          saveState();
+          renderAll();
+          showToast(`毎月固定の負債「${rl.name}」を削除しました`);
         }
       );
     }
@@ -2394,7 +2633,205 @@ main {
     }
 
     /* ---------------------------------------------------------
-       MODAL 3: 負債精算（全額セット＆一部精算）
+       MODAL 2B: 毎月固定の負債の登録・編集
+       --------------------------------------------------------- */
+    function openRecurringLiabModal(editId = null) {
+      const rl = editId ? state.recurringLiabilities.find(x => x.id === editId) : null;
+      const ym0 = curYM();
+
+      openModalHTML(`
+        <div class="modal-head">
+          <h3>${rl ? '毎月固定の負債を編集' : '毎月固定の負債を登録'}</h3>
+          <button type="button" class="btn-icon" onclick="closeModal()">✕</button>
+        </div>
+        <form onsubmit="submitRecurringLiab(event,'${editId || ''}')">
+          <div class="modal-body">
+            <div class="info-banner red">
+              登録した金額は毎月自動で「確定負債」として計上され、ホームの実質フリー資金と将来予測に連動します。
+            </div>
+            <div class="field">
+              <label>名称</label>
+              <input type="text" id="m-rliab-name" class="input" required value="${esc(rl ? rl.name : '')}" placeholder="例：家賃、スマホ代、分割払い、サブスク" />
+            </div>
+            <div class="grid-2">
+              <div class="field">
+                <label>毎月の金額 (円)</label>
+                <div class="input-yen-wrap">
+                  <span>¥</span>
+                  <input type="text" inputmode="numeric" id="m-rliab-amt" class="input" required value="${rl ? fmtNumStr(rl.amount) : ''}" placeholder="0" oninput="fmtComma(this)" />
+                </div>
+              </div>
+              <div class="field">
+                <label>毎月の引落日</label>
+                <input type="number" id="m-rliab-day" class="input" min="1" max="31" required value="${rl ? (rl.day || 27) : 27}" />
+              </div>
+            </div>
+            <div class="grid-2">
+              <div class="field">
+                <label>開始月</label>
+                <input type="month" id="m-rliab-start" class="input" value="${rl ? (rl.startMonth || ym0) : ym0}" />
+              </div>
+              <div class="field">
+                <label>終了月（任意）</label>
+                <input type="month" id="m-rliab-end" class="input" value="${rl ? (rl.endMonth || '') : ''}" />
+              </div>
+            </div>
+            <div class="field">
+              <label>引落予定口座</label>
+              <select id="m-rliab-acc" class="select">
+                ${state.accounts.map(a => `<option value="${a.id}" ${rl && rl.accountId === a.id ? 'selected' : ''}>${esc(a.name)} (${fmtYen(a.balance)})</option>`).join('')}
+              </select>
+            </div>
+            <div class="field">
+              <label>メモ（任意）</label>
+              <input type="text" id="m-rliab-memo" class="input" value="${esc(rl ? rl.memo : '')}" placeholder="例：毎月27日に銀行から自動引落" />
+            </div>
+          </div>
+          <div class="modal-foot">
+            <button type="button" class="btn btn-soft btn-sm" onclick="closeModal()">キャンセル</button>
+            <button type="submit" class="btn btn-primary btn-sm">固定負債を保存</button>
+          </div>
+        </form>
+      `);
+      setTimeout(() => { const el = document.getElementById('m-rliab-name'); if (el && !rl) el.focus(); }, 40);
+    }
+
+    function submitRecurringLiab(e, editId) {
+      e.preventDefault();
+      const name = document.getElementById('m-rliab-name').value.trim();
+      const amount = Math.max(0, parseYen(document.getElementById('m-rliab-amt').value));
+      const day = Math.min(31, Math.max(1, Number(document.getElementById('m-rliab-day').value) || 27));
+      const startMonth = document.getElementById('m-rliab-start').value || curYM();
+      const endMonth = document.getElementById('m-rliab-end').value || '';
+      const accountId = document.getElementById('m-rliab-acc').value;
+      const memo = document.getElementById('m-rliab-memo').value.trim();
+
+      if (!name || amount <= 0) { showToast('名称と1円以上の金額を入力してください', true); return; }
+      if (endMonth && endMonth < startMonth) { showToast('終了月は開始月以降を指定してください', true); return; }
+
+      if (editId) {
+        const rl = state.recurringLiabilities.find(x => x.id === editId);
+        if (rl) Object.assign(rl, { name, amount, day, startMonth, endMonth, accountId, memo });
+        showToast(`固定負債「${name}」を更新しました`);
+      } else {
+        state.recurringLiabilities.push({
+          id: uid('rliab'), name, amount, day, accountId, startMonth, endMonth, memo, active: true, settledMonths: []
+        });
+        showToast(`毎月固定の負債「${name}」を登録しました`);
+      }
+      saveState();
+      closeModal();
+      renderAll();
+    }
+
+    /* ---------------------------------------------------------
+       MODAL 2C: 毎月固定の負債の今月分精算
+       --------------------------------------------------------- */
+    function openSettleRecurringLiabModal(id) {
+      const rl = state.recurringLiabilities.find(x => x.id === id);
+      const ym0 = curYM();
+      if (!rl) return;
+      if ((rl.settledMonths || []).includes(ym0)) {
+        showToast('今月分はすでに精算済みです', true);
+        return;
+      }
+
+      openModalHTML(`
+        <div class="modal-head">
+          <h3>毎月固定の負債を精算（${fmtMonthShort(ym0)}分）</h3>
+          <button type="button" class="btn-icon" onclick="closeModal()">✕</button>
+        </div>
+        <form onsubmit="submitSettleRecurringLiab(event,'${rl.id}')">
+          <div class="modal-body">
+            <div class="info-banner red row-between">
+              <strong>${esc(rl.name)}</strong>
+              <strong class="nums">今月予定額 ${fmtYen(rl.amount)}</strong>
+            </div>
+            <div class="field">
+              <div class="row-between">
+                <label>精算金額（実際の引落額に合わせて変更可）</label>
+                <button type="button" class="btn btn-soft-indigo btn-xs" onclick="setFullRecurringSettle(${rl.amount})">予定額に戻す</button>
+              </div>
+              <div class="input-yen-wrap">
+                <span>¥</span>
+                <input type="text" inputmode="numeric" id="m-rset-amt" class="input" required value="${fmtNumStr(rl.amount)}" oninput="fmtComma(this);previewSettleRecurringLiab(${rl.amount})" />
+              </div>
+            </div>
+            <div class="grid-2">
+              <div class="field">
+                <label>引き落とし元口座</label>
+                <select id="m-rset-acc" class="select">
+                  ${state.accounts.map(a => `<option value="${a.id}" ${a.id === rl.accountId ? 'selected' : ''}>${esc(a.name)} (${fmtYen(a.balance)})</option>`).join('')}
+                </select>
+              </div>
+              <div class="field">
+                <label>精算日</label>
+                <input type="date" id="m-rset-date" class="input" required value="${todayISO()}" />
+              </div>
+            </div>
+            <div id="m-rset-prev" class="info-banner indigo"></div>
+          </div>
+          <div class="modal-foot">
+            <button type="button" class="btn btn-soft btn-sm" onclick="closeModal()">キャンセル</button>
+            <button type="submit" class="btn btn-primary btn-sm">今月分を精算する</button>
+          </div>
+        </form>
+      `);
+      previewSettleRecurringLiab(rl.amount);
+    }
+
+    function setFullRecurringSettle(schedAmt) {
+      document.getElementById('m-rset-amt').value = fmtNumStr(schedAmt);
+      previewSettleRecurringLiab(schedAmt);
+    }
+
+    function previewSettleRecurringLiab(schedAmt) {
+      const amt = Math.max(0, parseYen(document.getElementById('m-rset-amt').value));
+      const freeDiff = schedAmt - amt;
+      const el = document.getElementById('m-rset-prev');
+      el.className = `info-banner ${freeDiff < 0 ? 'red' : (freeDiff > 0 ? 'emerald' : 'indigo')}`;
+      const impactText = freeDiff === 0
+        ? '変動なし（予定どおり精算）'
+        : `${fmtYen(freeDiff, true)}（予定との差額分）`;
+      el.innerHTML = `
+        <div class="row-between"><span>実質フリー資金への影響</span><strong class="nums">${impactText}</strong></div>
+        <div style="font-size:11px;margin-top:4px;">今月分のみ精算済みとなり、翌月はまた自動で未払負債として計上されます。</div>
+      `;
+    }
+
+    function submitSettleRecurringLiab(e, id) {
+      e.preventDefault();
+      const rl = state.recurringLiabilities.find(x => x.id === id);
+      const ym0 = curYM();
+      const amount = parseYen(document.getElementById('m-rset-amt').value);
+      const accountId = document.getElementById('m-rset-acc').value;
+      const date = document.getElementById('m-rset-date').value;
+      if (!rl || amount <= 0) { showToast('1円以上の精算金額を入力してください', true); return; }
+
+      const tx = {
+        id: uid('tx'),
+        date,
+        type: 'settlement',
+        amount,
+        accountId,
+        category: '負債精算',
+        memo: `${rl.name}（${fmtMonthShort(ym0)}分 固定負債精算）`,
+        sourceRecurringLiabId: rl.id,
+        sourceMonth: ym0
+      };
+      state.transactions.push(tx);
+      applyTxEffect(tx, +1);
+      if (!(rl.settledMonths || []).includes(ym0)) {
+        rl.settledMonths = [...(rl.settledMonths || []), ym0];
+      }
+      saveState();
+      closeModal();
+      renderAll();
+      showToast(`固定負債「${rl.name}」の${fmtMonthShort(ym0)}分 (${fmtYen(amount)}) を精算しました`);
+    }
+
+    /* ---------------------------------------------------------
+       MODAL 3: 負債精算（カード・単発の全額セット＆一部精算）
        --------------------------------------------------------- */
     function openSettleModal(liabId) {
       const l = state.liabilities.find(x => x.id === liabId);
@@ -2967,50 +3404,5 @@ main {
       }
     });
   </script>
-  <script>
-(function(){
-  function fix(){
-    document.querySelectorAll('div,section,dialog').forEach(function(el){
-      var cs=getComputedStyle(el);
-      if(cs.position!=='fixed'||cs.display==='none'||cs.visibility==='hidden')return;
-      if(el.querySelector('main,nav'))return;
-      if(el.getBoundingClientRect().height<window.innerHeight*0.5)return;
-      if(!el.querySelector('input,select,textarea,form'))return;
-      if(!el.dataset.sf){
-        el.dataset.sf='1';
-        el.style.setProperty('overflow-y','auto','important');
-        el.style.setProperty('touch-action','pan-y','important');
-      }
-      var card=null;
-      for(var i=0;i<el.children.length;i++){
-        if(el.children[i].querySelector('input,select,textarea,form')){card=el.children[i];break;}
-      }
-      var target=(card&&card.tagName!=='FORM')?card:el;
-      if(!target.dataset.sf2){
-        target.dataset.sf2='1';
-        target.style.setProperty('max-height','85dvh','important');
-        target.style.setProperty('height','auto','important');
-        target.style.setProperty('overflow-y','auto','important');
-        target.style.setProperty('-webkit-overflow-scrolling','touch','important');
-        target.style.setProperty('touch-action','pan-y','important');
-        target.style.setProperty('padding-bottom','64px','important');
-      }
-      target.querySelectorAll('div,form').forEach(function(d){
-        if(!d.dataset.sf3&&d.querySelectorAll('input,select,textarea').length>=2){
-          d.dataset.sf3='1';
-          d.style.setProperty('flex-shrink','0','important');
-          d.style.setProperty('overflow-y','visible','important');
-          d.style.setProperty('max-height','none','important');
-          d.style.setProperty('height','auto','important');
-        }
-      });
-    });
-  }
-  new MutationObserver(fix).observe(document.body,{childList:true,subtree:true,attributes:true});
-  document.addEventListener('click',function(){setTimeout(fix,60);},true);
-  fix();
-})();
-</script>
-
 </body>
 </html>
