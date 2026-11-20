@@ -1,0 +1,1967 @@
+```html
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>実質キャッシュ管理 (RealCash)</title>
+  <!-- PWA・ホーム画面アプリ化設定（全画面起動・テーマカラー・専用アイコン） -->
+  <meta name="application-name" content="RealCash" />
+  <meta name="theme-color" content="#ffffff" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="RealCash" />
+  <link id="pwa-icon" rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='112' fill='%230f172a'/%3E%3Cg fill='none' stroke='%2334d399' stroke-width='28' stroke-linecap='round' stroke-linejoin='round' transform='translate(96,96) scale(13.333)'%3E%3Cpath d='M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1'/%3E%3Cpath d='M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4'/%3E%3C/g%3E%3C/svg%3E" />
+  <link id="pwa-apple-icon" rel="apple-touch-icon" href="" />
+  <link id="pwa-manifest" rel="manifest" href="" />
+  <style>
+    /* =========================================================
+       デザインシステム（外部CDNゼロ・軽量モダンライトテーマ）
+       ========================================================= */
+    :root {
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --surface-2: #f1f5f9;
+      --border: #e2e8f0;
+      --border-soft: #f1f5f9;
+      --border-strong: #cbd5e1;
+      --text: #0f172a;
+      --text-sub: #475569;
+      --text-muted: #64748b;
+      --slate: #0f172a;
+      --indigo: #4f46e5;
+      --indigo-bg: #eef2ff;
+      --emerald: #059669;
+      --emerald-bg: #ecfdf5;
+      --purple: #7c3aed;
+      --purple-bg: #f5f3ff;
+      --amber: #d97706;
+      --amber-bg: #fffbeb;
+      --red: #dc2626;
+      --red-bg: #fef2f2;
+      --radius: 14px;
+      --radius-sm: 10px;
+      --shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+      --shadow-lg: 0 10px 25px rgba(15, 23, 42, 0.14);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic UI", Meiryo, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+      overscroll-behavior-y: none;
+      width: 100%;
+    }
+    /* ネイティブアプリ風の軽快なタップ応答と誤選択防止 */
+    button, input, select, textarea, label { touch-action: manipulation; }
+    .sidebar, .mobile-header, .mobile-nav, .btn, .seg-btn, .mnav-btn, .nav-item, .acc-trigger {
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .nums { font-variant-numeric: tabular-nums; }
+    .hidden { display: none !important; }
+    .nowrap { white-space: nowrap; flex-shrink: 0; }
+
+    /* アプリ全体シェル */
+    .app-shell { display: flex; min-height: 100vh; width: 100%; }
+    .content-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+    /* PC固定サイドバー */
+    .sidebar {
+      width: 252px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      position: fixed;
+      inset: 0 auto 0 0;
+      display: flex;
+      flex-direction: column;
+      z-index: 30;
+    }
+    .brand {
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .brand-icon {
+      width: 36px; height: 36px;
+      border-radius: 11px;
+      background: var(--slate);
+      color: #34d399;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .brand h1 { font-size: 16px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.2; }
+    .brand p { font-size: 11px; color: var(--text-muted); }
+
+    .sidebar-actions { padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+    .nav-list { padding: 4px 12px; flex: 1; display: flex; flex-direction: column; gap: 4px; }
+    .nav-item {
+      display: flex; align-items: center; gap: 10px;
+      width: 100%; padding: 10px 12px;
+      border: none; background: transparent;
+      border-radius: 11px; font-size: 13.5px; font-weight: 600;
+      color: var(--text-sub); cursor: pointer; text-align: left;
+      font-family: inherit;
+      transition: background 0.15s, color 0.15s;
+    }
+    .nav-item:hover { background: var(--surface-2); color: var(--text); }
+    .nav-item.active { background: var(--indigo-bg); color: var(--indigo); font-weight: 700; }
+
+    .sidebar-summary {
+      margin: 12px; padding: 12px 14px;
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 12px;
+    }
+    .sidebar-summary .lbl { font-size: 11px; color: var(--text-muted); font-weight: 600; }
+    .sidebar-summary .val { font-size: 18px; font-weight: 800; margin-top: 2px; }
+    .sidebar-summary .sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+    /* スマホ上部スティッキーヘッダー */
+    .mobile-header {
+      display: none;
+      position: sticky; top: 0; z-index: 30;
+      background: rgba(255, 255, 255, 0.96);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--border);
+      padding: max(10px, env(safe-area-inset-top)) 14px 10px;
+      align-items: center; justify-content: space-between; gap: 8px;
+    }
+
+    /* スマホ下部タブバー */
+    .mobile-nav {
+      display: none;
+      position: fixed; inset: auto 0 0 0; z-index: 35;
+      background: rgba(255, 255, 255, 0.98);
+      backdrop-filter: blur(10px);
+      border-top: 1px solid var(--border);
+      padding: 6px 4px max(8px, env(safe-area-inset-bottom));
+      grid-template-columns: repeat(5, 1fr);
+    }
+    .mnav-btn {
+      border: none; background: transparent; cursor: pointer;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+      padding: 6px 2px; border-radius: 10px;
+      font-size: 10.5px; font-weight: 600; color: var(--text-muted);
+      font-family: inherit;
+      transition: transform 0.1s ease, background 0.15s, color 0.15s;
+    }
+    .mnav-btn:active { transform: scale(0.94); }
+    .mnav-btn.active { color: var(--indigo); background: var(--indigo-bg); font-weight: 700; }
+
+    /* メインコンテンツ領域 */
+    .main {
+      flex: 1;
+      margin-left: 252px;
+      padding: 24px 24px 56px;
+      min-width: 0;
+    }
+    .container { max-width: 1000px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+
+    @media (max-width: 820px) {
+      .sidebar { display: none; }
+      .mobile-header { display: flex; }
+      .mobile-nav { display: grid; }
+      /* 下部タブバーに絶対隠れないよう十分な下部余白を確保 */
+      .main { margin-left: 0; padding: 14px 12px 108px; }
+    }
+
+    /* 共通カード・見出し */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 18px;
+      min-width: 0;
+    }
+    .card-tight { padding: 14px 16px; }
+    @media (max-width: 480px) {
+      .card { padding: 15px 14px; }
+      .card-tight { padding: 12px 13px; }
+    }
+
+    .page-head {
+      display: flex; flex-wrap: wrap; align-items: flex-end;
+      justify-content: space-between; gap: 10px;
+    }
+    .page-title { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; }
+    .page-desc { font-size: 12.5px; color: var(--text-muted); margin-top: 2px; }
+
+    /* ボタン群（重なり防止のため white-space: nowrap; flex-shrink: 0 を徹底） */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+      padding: 9px 14px; border-radius: var(--radius-sm);
+      border: 1px solid transparent; font-size: 13px; font-weight: 700;
+      cursor: pointer; transition: opacity 0.15s, background 0.15s, transform 0.08s;
+      white-space: nowrap; flex-shrink: 0; font-family: inherit;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-sm { padding: 7px 11px; font-size: 12.5px; border-radius: 9px; }
+    .btn-xs { padding: 6px 10px; font-size: 12px; border-radius: 8px; }
+    .btn-primary { background: var(--slate); color: #fff; }
+    .btn-primary:hover { background: #1e293b; }
+    .btn-indigo { background: var(--indigo); color: #fff; }
+    .btn-indigo:hover { background: #4338ca; }
+    .btn-emerald { background: var(--emerald); color: #fff; }
+    .btn-emerald:hover { background: #047857; }
+    .btn-purple { background: var(--purple); color: #fff; }
+    .btn-purple:hover { background: #6d28d9; }
+    .btn-red { background: var(--red); color: #fff; }
+    .btn-red:hover { background: #b91c1c; }
+    .btn-soft { background: var(--surface-2); color: var(--text); border-color: var(--border); }
+    .btn-soft:hover { background: #e2e8f0; }
+    .btn-soft-emerald { background: var(--emerald-bg); color: var(--emerald); border-color: #a7f3d0; }
+    .btn-soft-indigo { background: var(--indigo-bg); color: var(--indigo); border-color: #c7d2fe; }
+    .btn-soft-purple { background: var(--purple-bg); color: var(--purple); border-color: #ddd6fe; }
+    .btn-soft-red { background: var(--red-bg); color: var(--red); border-color: #fecaca; }
+    .btn-soft-amber { background: var(--amber-bg); color: #b45309; border-color: #fde68a; }
+    .btn-icon {
+      min-width: 30px; height: 30px; padding: 0 7px; border-radius: 8px;
+      background: var(--surface-2); border: 1px solid var(--border);
+      color: var(--text-sub); cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center;
+      flex-shrink: 0; font-size: 12px; font-weight: 700;
+    }
+    .btn-icon:hover { background: #e2e8f0; color: var(--text); }
+
+    /* バッジ（nowrap & shrink 0） */
+    .badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 2px 8px; border-radius: 999px;
+      font-size: 11px; font-weight: 700;
+      white-space: nowrap; flex-shrink: 0;
+    }
+    .b-emerald { background: var(--emerald-bg); color: var(--emerald); }
+    .b-indigo { background: var(--indigo-bg); color: var(--indigo); }
+    .b-purple { background: var(--purple-bg); color: var(--purple); }
+    .b-red { background: var(--red-bg); color: var(--red); }
+    .b-amber { background: var(--amber-bg); color: #b45309; }
+    .b-slate { background: var(--surface-2); color: var(--text-sub); }
+
+    /* セグメント切替 */
+    .seg {
+      display: inline-flex; background: var(--surface-2);
+      border: 1px solid var(--border); border-radius: 10px;
+      padding: 3px; gap: 2px; flex-wrap: wrap; max-width: 100%;
+    }
+    .seg-btn {
+      border: none; background: transparent; color: var(--text-sub);
+      padding: 6px 11px; border-radius: 7px; font-size: 12px; font-weight: 700;
+      cursor: pointer; font-family: inherit; transition: 0.15s;
+      white-space: nowrap; flex-shrink: 0;
+    }
+    .seg-btn.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
+    .seg-btn.active-purple { background: var(--purple); color: #fff; }
+    .seg-btn.active-emerald { background: var(--emerald); color: #fff; }
+    .seg-btn.active-slate { background: var(--slate); color: #fff; }
+
+    /* トグルスイッチ */
+    .switch {
+      position: relative; width: 40px; height: 22px; flex-shrink: 0;
+      border-radius: 999px; border: none; cursor: pointer;
+      background: #cbd5e1; transition: background 0.18s; padding: 0;
+    }
+    .switch.on { background: var(--emerald); }
+    .switch::after {
+      content: ""; position: absolute; top: 3px; left: 3px;
+      width: 16px; height: 16px; border-radius: 50%; background: #fff;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.2); transition: transform 0.18s;
+    }
+    .switch.on::after { transform: translateX(18px); }
+
+    /* グリッド */
+    .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    @media (max-width: 900px) { .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 640px) {
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+      .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    }
+
+    /* テキスト色 */
+    .text-emerald { color: var(--emerald); }
+    .text-red { color: var(--red); }
+    .text-purple { color: var(--purple); }
+    .text-indigo { color: var(--indigo); }
+    .text-amber { color: var(--amber); }
+    .text-muted { color: var(--text-muted); }
+
+    /* ヒーローカード・計算式・バー */
+    .hero-amount {
+      font-size: clamp(30px, 6vw, 44px);
+      font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; margin-top: 6px;
+    }
+    .formula-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 8px; margin-top: 14px; padding: 10px;
+      background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
+    }
+    .formula-box { background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 8px 10px; min-width: 0; }
+    .formula-box .k { font-size: 10.5px; color: var(--text-muted); font-weight: 600; }
+    .formula-box .v { font-size: 14px; font-weight: 800; margin-top: 2px; white-space: nowrap; }
+    .formula-box.dark { background: var(--slate); border-color: var(--slate); color: #fff; }
+    .formula-box.dark .k { color: #cbd5e1; }
+
+    .stack-bar { height: 12px; background: var(--surface-2); border-radius: 999px; overflow: hidden; display: flex; margin-top: 6px; }
+    .stack-seg { height: 100%; transition: width 0.35s ease; }
+    .legend { display: flex; flex-wrap: wrap; gap: 10px 14px; margin-top: 8px; font-size: 11.5px; color: var(--text-sub); }
+    .legend-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+
+    /* 進捗・比較バー */
+    .prog-track { height: 9px; background: var(--surface-2); border-radius: 999px; overflow: hidden; margin-top: 6px; }
+    .prog-fill { height: 100%; border-radius: 999px; transition: width 0.3s; }
+
+    /* =========================================================
+       スマホ完全最適化：3段構造アイテムカード＆上下段リスト行
+       （タイトル縦潰れ・文字重なりを構造的にゼロ化）
+       ========================================================= */
+    .stack-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    /* 予定収入・予定収支アイテム：厳守の3段構造 */
+    .sched-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      padding: 13px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-width: 0;
+      transition: border-color 0.15s, opacity 0.15s;
+    }
+    .sched-card.inactive { opacity: 0.58; background: #f8fafc; }
+
+    /* 1段目：左にトグルスイッチ＋タイトル、右に金額 */
+    .sched-row-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+    }
+    .sched-top-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex: 1;
+      min-width: 0;
+    }
+    .sched-title {
+      flex: 1;
+      min-width: 0;
+      font-size: 14px;
+      font-weight: 800;
+      color: var(--text);
+      line-height: 1.35;
+      word-break: break-word;
+      overflow-wrap: break-word;
+      writing-mode: horizontal-tb;
+    }
+    .sched-amount {
+      white-space: nowrap;
+      flex-shrink: 0;
+      font-size: 15.5px;
+      font-weight: 800;
+    }
+
+    /* 2段目：周期・日付バッジ＋口座・引当情報 */
+    .sched-row-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      font-size: 11.5px;
+      color: var(--text-muted);
+    }
+
+    /* 3段目：アクションボタン群（独立段・右寄せ・重なりゼロ） */
+    .sched-row-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      margin-top: 2px;
+      padding-top: 9px;
+      border-top: 1px solid var(--border-soft);
+    }
+
+    /* 取引履歴・直近取引：上下2段構造 */
+    .list-box { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); overflow: hidden; }
+    .list-head {
+      padding: 11px 14px; background: var(--bg); border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;
+      font-size: 12px; color: var(--text-sub);
+    }
+    .tx-row {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border-soft);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      transition: background 0.12s;
+    }
+    .tx-row:last-child { border-bottom: none; }
+    .tx-row:hover { background: #f8fafc; }
+    .tx-row.selected { background: #eef2ff; }
+    .tx-row-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 10px;
+      width: 100%;
+    }
+    .tx-row-left {
+      display: flex;
+      align-items: flex-start;
+      gap: 9px;
+      flex: 1;
+      min-width: 0;
+    }
+    .tx-row-title {
+      flex: 1;
+      min-width: 0;
+      font-size: 13.5px;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.35;
+      word-break: break-word;
+    }
+    .tx-row-bottom {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .tx-row-meta {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      font-size: 11.5px;
+      color: var(--text-muted);
+      min-width: 0;
+      flex: 1;
+    }
+
+    /* 一括操作バー */
+    .bulk-bar {
+      position: sticky; top: 58px; z-index: 25;
+      background: var(--slate); color: #fff; border-radius: 12px;
+      padding: 11px 14px; display: flex; flex-wrap: wrap; align-items: center;
+      justify-content: space-between; gap: 10px; box-shadow: var(--shadow-lg);
+    }
+    @media (min-width: 821px) { .bulk-bar { top: 12px; } }
+
+    /* 将来予測アコーディオン（スマホ最適化の上下段） */
+    .acc-item { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+    .acc-item.warn { border-color: #fca5a5; }
+    .acc-trigger {
+      width: 100%; border: none; background: transparent; padding: 13px 14px;
+      cursor: pointer; text-align: left; font-family: inherit;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .acc-trigger:hover { background: #f8fafc; }
+    .acc-head-row {
+      display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%;
+    }
+    .acc-metrics-grid {
+      display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; width: 100%;
+      font-size: 11.5px;
+    }
+    @media (min-width: 640px) { .acc-metrics-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+    .acc-mini-pill {
+      background: var(--bg); border: 1px solid var(--border-soft);
+      border-radius: 8px; padding: 5px 8px;
+      display: flex; justify-content: space-between; align-items: center; gap: 4px;
+    }
+    .acc-panel {
+      background: var(--bg); border-top: 1px solid var(--border);
+      padding: 12px; display: flex; flex-direction: column; gap: 9px;
+    }
+    /* 月別予測の個別明細行（3段構造） */
+    .acc-line {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 11px;
+      padding: 11px 12px; display: flex; flex-direction: column; gap: 6px;
+    }
+
+    /* フォーム要素 */
+    .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+    .field label { font-size: 12px; font-weight: 700; color: var(--text-sub); }
+    .input, .select, .textarea {
+      width: 100%; padding: 9px 12px; border: 1px solid var(--border-strong);
+      border-radius: 9px; background: var(--surface); color: var(--text);
+      font-size: 14px; font-family: inherit; outline: none; transition: border-color 0.15s;
+    }
+    .input:focus, .select:focus, .textarea:focus { border-color: var(--indigo); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12); }
+    .input-yen-wrap { position: relative; width: 100%; }
+    .input-yen-wrap span { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-weight: 700; pointer-events: none; }
+    .input-yen-wrap .input { padding-left: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
+    input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--indigo); cursor: pointer; flex-shrink: 0; margin-top: 1px; }
+
+    /* モーダル */
+    .modal-backdrop {
+      position: fixed; inset: 0; z-index: 60;
+      background: rgba(15, 23, 42, 0.52);
+      display: flex; align-items: center; justify-content: center;
+      padding: 14px;
+    }
+    .modal {
+      background: var(--surface); border-radius: 16px; width: 100%; max-width: 520px;
+      max-height: 90vh; display: flex; flex-direction: column;
+      box-shadow: var(--shadow-lg); overflow: hidden;
+    }
+    .modal-lg { max-width: 640px; }
+    .modal-sm { max-width: 390px; }
+    .modal-head {
+      padding: 15px 18px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    }
+    .modal-head h3 { font-size: 15.5px; font-weight: 800; }
+    .modal-body { padding: 16px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 13px; }
+    .modal-foot { padding: 12px 18px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; background: var(--bg); }
+    @media (max-width: 640px) {
+      .modal-backdrop { align-items: flex-end; padding: 0; }
+      .modal { border-radius: 20px 20px 0 0; max-height: 92vh; }
+      .modal-sm { border-radius: 16px; margin: 16px; align-self: center; }
+    }
+
+    /* 情報バナー */
+    .info-banner {
+      padding: 10px 12px; border-radius: 10px; font-size: 12px;
+      border: 1px solid var(--border); background: var(--bg); color: var(--text-sub);
+    }
+    .info-banner.indigo { background: var(--indigo-bg); border-color: #c7d2fe; color: #3730a3; }
+    .info-banner.emerald { background: var(--emerald-bg); border-color: #a7f3d0; color: #065f46; }
+    .info-banner.red { background: var(--red-bg); border-color: #fecaca; color: #991b1b; }
+    .info-banner.amber { background: var(--amber-bg); border-color: #fde68a; color: #92400e; }
+    .info-banner.purple { background: var(--purple-bg); border-color: #ddd6fe; color: #5b21b6; }
+
+    /* インラインSVGチャート */
+    .chart-wrap { position: relative; width: 100%; overflow: hidden; }
+    .chart-svg { width: 100%; height: auto; display: block; }
+    .chart-readout {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px;
+      padding: 9px 12px; margin-bottom: 10px; border-radius: 10px;
+      background: var(--bg); border: 1px solid var(--border); font-size: 12px;
+    }
+
+    /* トースト通知 */
+    .toast-wrap { position: fixed; top: 14px; right: 14px; left: 14px; z-index: 90; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; pointer-events: none; }
+    .toast {
+      background: var(--slate); color: #fff; font-size: 12.5px; font-weight: 700;
+      padding: 10px 14px; border-radius: 10px; box-shadow: var(--shadow-lg);
+      pointer-events: auto; max-width: 360px;
+    }
+    .toast.err { background: var(--red); }
+
+    /* 汎用フレックス */
+    .row { display: flex; align-items: center; gap: 8px; }
+    .row-between { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+    .wrap { flex-wrap: wrap; }
+    .empty { padding: 26px 14px; text-align: center; color: var(--text-muted); font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <!-- PC用固定サイドバー -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-icon" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg>
+        </div>
+        <div>
+          <h1>RealCash Lite</h1>
+          <p>実質キャッシュ＆将来予測</p>
+        </div>
+      </div>
+
+      <div class="sidebar-actions">
+        <button type="button" class="btn btn-primary" onclick="openTxModal()">＋ 取引を記録</button>
+        <button type="button" class="btn btn-soft btn-sm" onclick="openDataModal()">口座・データ管理</button>
+      </div>
+
+      <nav class="nav-list" id="pc-nav">
+        <button type="button" class="nav-item active" data-tab="dashboard" onclick="switchTab('dashboard')">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+          ホーム
+        </button>
+        <button type="button" class="nav-item" data-tab="transactions" onclick="switchTab('transactions')">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>
+          履歴
+        </button>
+        <button type="button" class="nav-item" data-tab="liabilities" onclick="switchTab('liabilities')">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+          負債・クレカ
+        </button>
+        <button type="button" class="nav-item" data-tab="provisions" onclick="switchTab('provisions')">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 5c-1.5 0-2.8 1.4-3 2-3.5-1.5-11-.3-11 5 0 1.8 0 3 2 4.5V20h4v-2h3v2h4v-4c1-.5 1.7-1 2-2h2v-4h-2c0-1-.5-1.5-1-2V5z"/><circle cx="13" cy="11" r="1"/></svg>
+          引当金
+        </button>
+        <button type="button" class="nav-item" data-tab="forecast" onclick="switchTab('forecast')">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+          将来予測
+        </button>
+      </nav>
+
+      <div class="sidebar-summary">
+        <div class="lbl" id="sb-free-lbl">現在の実質フリー資金</div>
+        <div class="val nums" id="sb-free-val">¥0</div>
+        <div class="sub nums" id="sb-cash-sub">手元キャッシュ ¥0</div>
+      </div>
+    </aside>
+
+    <!-- コンテンツ列 -->
+    <div class="content-col">
+      <!-- モバイル用スティッキーヘッダー -->
+      <header class="mobile-header">
+        <div class="row" style="min-width:0;">
+          <div class="brand-icon" style="width:30px;height:30px;border-radius:9px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg>
+          </div>
+          <strong style="font-size:14.5px;white-space:nowrap;">RealCash Lite</strong>
+        </div>
+        <div class="row" style="gap:6px;">
+          <button type="button" class="btn btn-soft btn-xs" onclick="openDataModal()">口座・データ</button>
+          <button type="button" class="btn btn-primary btn-xs" onclick="openTxModal()">＋取引を記録</button>
+        </div>
+      </header>
+
+      <!-- メイン領域 -->
+      <main class="main">
+        <div class="container">
+          <section id="view-dashboard" class="tab-view"></section>
+          <section id="view-transactions" class="tab-view hidden"></section>
+          <section id="view-liabilities" class="tab-view hidden"></section>
+          <section id="view-provisions" class="tab-view hidden"></section>
+          <section id="view-forecast" class="tab-view hidden"></section>
+        </div>
+      </main>
+    </div>
+
+    <!-- モバイル用下部5タブナビ -->
+    <nav class="mobile-nav" id="mobile-nav">
+      <button type="button" class="mnav-btn active" data-tab="dashboard" onclick="switchTab('dashboard')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        ホーム
+      </button>
+      <button type="button" class="mnav-btn" data-tab="transactions" onclick="switchTab('transactions')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>
+        履歴
+      </button>
+      <button type="button" class="mnav-btn" data-tab="liabilities" onclick="switchTab('liabilities')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+        負債
+      </button>
+      <button type="button" class="mnav-btn" data-tab="provisions" onclick="switchTab('provisions')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 5c-1.5 0-2.8 1.4-3 2-3.5-1.5-11-.3-11 5 0 1.8 0 3 2 4.5V20h4v-2h3v2h4v-4c1-.5 1.7-1 2-2h2v-4h-2c0-1-.5-1.5-1-2V5z"/></svg>
+        引当金
+      </button>
+      <button type="button" class="mnav-btn" data-tab="forecast" onclick="switchTab('forecast')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+        予測
+      </button>
+    </nav>
+  </div>
+
+  <!-- 汎用モーダル／確認モーダル／トースト -->
+  <div id="modal-root" class="hidden"></div>
+  <div id="confirm-root" class="hidden"></div>
+  <div id="toast-wrap" class="toast-wrap"></div>
+
+  <script>
+    /* =========================================================
+       実質キャッシュ管理 (RealCash Lite) コアエンジン
+       - 外部CDN不使用 / 単一ファイル / スマホ崩れ完全ゼロ設計
+       ========================================================= */
+    const STORAGE_KEY = 'realcash_lite_v1';
+    const WIN_PREFIX = 'REALCASH_LITE_V1::';
+
+    const TX_TYPES = {
+      income: { label: '収入', color: 'b-emerald', sign: '+', cls: 'text-emerald', isActual: true, isActualOut: false, isAccrualExp: false },
+      expense_cash: { label: '現金・口座支出', color: 'b-slate', sign: '-', cls: '', isActual: true, isActualOut: true, isAccrualExp: true },
+      expense_credit: { label: 'クレカ・後払い', color: 'b-red', sign: '-', cls: 'text-red', isActual: false, isActualOut: false, isAccrualExp: true },
+      settlement: { label: '負債精算', color: 'b-indigo', sign: '-', cls: 'text-indigo', isActual: true, isActualOut: true, isAccrualExp: false },
+      provision_alloc: { label: '引当積立', color: 'b-amber', sign: '', cls: 'text-amber', isActual: false, isActualOut: false, isAccrualExp: false },
+      expense_provision_cash: { label: '引当支出(現金)', color: 'b-amber', sign: '-', cls: 'text-amber', isActual: true, isActualOut: true, isAccrualExp: true },
+      expense_provision_credit: { label: '引当支出(クレカ)', color: 'b-amber', sign: '-', cls: 'text-amber', isActual: false, isActualOut: false, isAccrualExp: true }
+    };
+
+    const CAT_EXP = ['食費', '日用品', '交際費', '交通費', '趣味・娯楽', '住居・家賃', '通信・光熱費', '医療・美容', '特別費', 'その他'];
+    const CAT_INC = ['給与', 'ボーナス', '立替精算', '副業・臨時収入', 'その他収入'];
+
+    let state = null;
+    let ui = {
+      tab: 'dashboard',
+      txFilter: 'all',
+      txSearch: '',
+      selectedTx: new Set(),
+      fcSubTab: 'monthly', // 'monthly' | 'scheduled'
+      schedFilter: 'all',
+      expandedMonths: new Set(),
+      lookupMonth: null,
+      chartFocusIdx: null
+    };
+
+    /* ---------------------------------------------------------
+       日付・通貨・リアルタイム3桁カンマ整形ユーティリティ
+       --------------------------------------------------------- */
+    const todayISO = () => {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+    const curYM = () => todayISO().slice(0, 7);
+    const addMonths = (ym, delta) => {
+      const [y, m] = ym.split('-').map(Number);
+      const d = new Date(y, m - 1 + delta, 1);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    };
+    const clampDate = (ym, day) => {
+      const [y, m] = ym.split('-').map(Number);
+      const maxD = new Date(y, m, 0).getDate();
+      const dd = Math.min(Math.max(1, Number(day) || 1), maxD);
+      return `${y}-${String(m).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+    };
+    const fmtMonthJP = ym => {
+      if (!ym) return '';
+      const [y, m] = ym.split('-');
+      return `${y}年${Number(m)}月`;
+    };
+    const fmtMonthShort = ym => {
+      if (!ym) return '';
+      const [y, m] = ym.split('-');
+      return `${y.slice(2)}/${Number(m)}月`;
+    };
+    const fmtDate = iso => (iso ? iso.replace(/-/g, '/') : '未設定');
+    const fmtYen = (n, showPlus = false) => {
+      const v = Math.round(Number(n) || 0);
+      const s = Math.abs(v).toLocaleString('ja-JP');
+      if (v < 0) return `-¥${s}`;
+      return showPlus && v > 0 ? `+¥${s}` : `¥${s}`;
+    };
+    const fmtNumStr = (n, allowNeg = false) => {
+      const v = Math.round(Number(n) || 0);
+      if (!allowNeg && v < 0) return '0';
+      return v.toLocaleString('ja-JP');
+    };
+    const parseYen = (val, allowNeg = false) => {
+      const half = String(val ?? '')
+        .replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+        .replace(/[−ー－]/g, '-')
+        .trim();
+      const neg = allowNeg && half.startsWith('-');
+      const digits = half.replace(/[^\d]/g, '');
+      if (!digits) return 0;
+      const num = parseInt(digits, 10) || 0;
+      return neg ? -num : num;
+    };
+
+    // リアルタイム3桁カンマ自動整形（全角数字対応・カーソル位置維持）
+    function fmtComma(el, allowNeg = false) {
+      if (!el) return;
+      const raw = el.value;
+      const pos = typeof el.selectionStart === 'number' ? el.selectionStart : raw.length;
+      const norm = s => s.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/[−ー－]/g, '-');
+      const nRaw = norm(raw);
+      const nLeft = norm(raw.slice(0, pos));
+      const isNeg = allowNeg && nRaw.trimStart().startsWith('-');
+      const digits = nRaw.replace(/[^\d]/g, '');
+      if (!digits) {
+        const out = isNeg ? '-' : '';
+        if (el.value !== out) el.value = out;
+        return;
+      }
+      const leftNeg = allowNeg && nLeft.trimStart().startsWith('-');
+      const leftDigits = nLeft.replace(/[^\d]/g, '').length;
+      const leadZeros = digits.length - digits.replace(/^0+(?=\d)/, '').length;
+      const targetLeft = Math.max(0, leftDigits - leadZeros);
+      const cleaned = digits.replace(/^0+(?=\d)/, '');
+      const formatted = (isNeg ? '-' : '') + cleaned.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+      if (el.value !== formatted) {
+        el.value = formatted;
+        let newPos = isNeg && leftNeg ? 1 : 0;
+        let seen = 0;
+        for (let i = (isNeg ? 1 : 0); i < formatted.length; i++) {
+          if (seen >= targetLeft) break;
+          if (/\d/.test(formatted[i])) seen++;
+          newPos = i + 1;
+        }
+        try { el.setSelectionRange(newPos, newPos); } catch (_) {}
+      }
+    }
+
+    const uid = (p = 'id') => `${p}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+    const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    const nameOf = (arr, id) => (arr.find(x => x.id === id) || {}).name || '未設定';
+
+    /* ---------------------------------------------------------
+       データ初期化・永続化（localStorage + window.name）
+       --------------------------------------------------------- */
+    function createSampleState() {
+      const ym = curYM();
+      const next1 = addMonths(ym, 1);
+      const next2 = addMonths(ym, 2);
+      return normalizeState({
+        accounts: [
+          { id: 'acc_bank', name: 'メイン銀行', balance: 485000 },
+          { id: 'acc_wallet', name: '財布', balance: 28000 }
+        ],
+        liabilities: [
+          { id: 'liab_rakuten', name: '楽天カード（翌月引落）', balance: 46800, dueDate: clampDate(next1, 27), memo: '食費・日用品・サブスク利用分' },
+          { id: 'liab_sub', name: '三井住友カード（翌月引落）', balance: 15400, dueDate: clampDate(next1, 26), memo: '交通・コンビニ決済' }
+        ],
+        provisions: [
+          { id: 'prov_travel', name: '旅行引当金', balance: 75000, target: 150000, memo: '帰省・温泉旅行用の積立枠' },
+          { id: 'prov_tax', name: '年払い保険・税金引当', balance: 45000, target: 120000, memo: '年払い固定費の備え' }
+        ],
+        transactions: [
+          { id: 'tx_1', date: clampDate(ym, 3), type: 'expense_cash', amount: 1850, accountId: 'acc_wallet', category: '食費', memo: 'ランチ・カフェ' },
+          { id: 'tx_2', date: clampDate(ym, 7), type: 'expense_credit', amount: 14800, liabilityId: 'liab_rakuten', category: '日用品', memo: 'スーパー・日用品まとめ買い' },
+          { id: 'tx_3', date: clampDate(ym, 11), type: 'expense_credit', amount: 6400, liabilityId: 'liab_sub', category: '交際費', memo: '友人との食事' },
+          { id: 'tx_4', date: clampDate(ym, 14), type: 'provision_alloc', amount: 15000, provisionId: 'prov_travel', category: '特別費', memo: '旅行引当金へ積立' }
+        ],
+        scheduled: [
+          { id: 'sch_sal', kind: 'income', title: '毎月の給与（手取り）', amount: 285000, freq: 'monthly', day: 25, startMonth: ym, endMonth: '', accountId: 'acc_bank', category: '給与', active: true, appliedMonths: [] },
+          { id: 'sch_bon', kind: 'income', title: 'ボーナス（賞与）', amount: 320000, freq: 'once', date: clampDate(next1, 10), accountId: 'acc_bank', category: 'ボーナス', active: true, appliedMonths: [] },
+          { id: 'sch_rent', kind: 'expense', title: '家賃・管理費', amount: 82000, freq: 'monthly', day: 27, startMonth: ym, endMonth: '', accountId: 'acc_bank', useProvisionId: '', category: '住居・家賃', active: true, appliedMonths: [] },
+          { id: 'sch_util', kind: 'expense', title: '通信費・光熱費', amount: 16500, freq: 'monthly', day: 20, startMonth: ym, endMonth: '', accountId: 'acc_bank', useProvisionId: '', category: '通信・光熱費', active: true, appliedMonths: [] },
+          { id: 'sch_trip', kind: 'expense', title: '旅行イベント予定', amount: 85000, freq: 'once', date: clampDate(next2, 15), accountId: 'acc_bank', useProvisionId: 'prov_travel', category: '特別費', active: true, appliedMonths: [] }
+        ],
+        settings: {
+          dashIncludeIncome: false,
+          dashIncomeScope: 'this_month',
+          horizon: 6,
+          fcIncludeIncome: true,
+          fcIncludeVar: true,
+          fcVarAmount: 65000
+        }
+      });
+    }
+
+    function createEmptyState() {
+      return normalizeState({
+        accounts: [{ id: 'acc_bank', name: 'メイン銀行', balance: 0 }],
+        liabilities: [],
+        provisions: [],
+        transactions: [],
+        scheduled: [],
+        settings: { dashIncludeIncome: false, dashIncomeScope: 'this_month', horizon: 6, fcIncludeIncome: true, fcIncludeVar: false, fcVarAmount: 0 }
+      });
+    }
+
+    function normalizeState(raw) {
+      const s = raw.settings || {};
+      const validH = [1, 3, 6, 12];
+      const validScope = ['this_month', '1', '2', '3', '6', '12'];
+      return {
+        accounts: Array.isArray(raw.accounts) && raw.accounts.length ? raw.accounts.map(a => ({
+          id: a.id || uid('acc'), name: a.name || '口座', balance: Math.round(Number(a.balance) || 0)
+        })) : [{ id: 'acc_bank', name: 'メイン銀行', balance: 0 }],
+        liabilities: Array.isArray(raw.liabilities) ? raw.liabilities.map(l => ({
+          id: l.id || uid('liab'), name: l.name || 'クレカ', balance: Math.max(0, Math.round(Number(l.balance) || 0)),
+          dueDate: l.dueDate || clampDate(addMonths(curYM(), 1), 27), memo: l.memo || ''
+        })) : [],
+        provisions: Array.isArray(raw.provisions) ? raw.provisions.map(p => ({
+          id: p.id || uid('prov'), name: p.name || '引当枠', balance: Math.round(Number(p.balance) || 0),
+          target: Math.max(0, Math.round(Number(p.target) || 0)), memo: p.memo || ''
+        })) : [],
+        transactions: Array.isArray(raw.transactions) ? raw.transactions : [],
+        scheduled: Array.isArray(raw.scheduled) ? raw.scheduled.map(x => ({
+          ...x, id: x.id || uid('sch'), amount: Math.max(0, Math.round(Number(x.amount) || 0)),
+          active: x.active !== false, appliedMonths: Array.isArray(x.appliedMonths) ? x.appliedMonths : []
+        })) : [],
+        settings: {
+          dashIncludeIncome: !!s.dashIncludeIncome,
+          dashIncomeScope: validScope.includes(String(s.dashIncomeScope)) ? String(s.dashIncomeScope) : 'this_month',
+          horizon: validH.includes(Number(s.horizon)) ? Number(s.horizon) : 6,
+          fcIncludeIncome: s.fcIncludeIncome !== false,
+          fcIncludeVar: s.fcIncludeVar !== undefined ? !!s.fcIncludeVar : true,
+          fcVarAmount: s.fcVarAmount !== undefined ? Math.max(0, Math.round(Number(s.fcVarAmount) || 0)) : 65000
+        }
+      };
+    }
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && Array.isArray(parsed.accounts)) { state = normalizeState(parsed); return; }
+        }
+      } catch (_) {}
+      try {
+        if (typeof window.name === 'string' && window.name.startsWith(WIN_PREFIX)) {
+          const parsed = JSON.parse(window.name.slice(WIN_PREFIX.length));
+          if (parsed && Array.isArray(parsed.accounts)) { state = normalizeState(parsed); saveState(); return; }
+        }
+      } catch (_) {}
+      state = createSampleState();
+      saveState();
+    }
+
+    function saveState() {
+      const json = JSON.stringify(state);
+      try { localStorage.setItem(STORAGE_KEY, json); } catch (_) {}
+      try { window.name = WIN_PREFIX + json; } catch (_) {}
+    }
+
+    /* ---------------------------------------------------------
+       コア会計計算 & 取引適用／ロールバック
+       --------------------------------------------------------- */
+    function getTotals() {
+      const cash = state.accounts.reduce((s, a) => s + (Number(a.balance) || 0), 0);
+      const liability = state.liabilities.reduce((s, l) => s + Math.max(0, Number(l.balance) || 0), 0);
+      const provision = state.provisions.reduce((s, p) => s + (Number(p.balance) || 0), 0);
+      const free = cash - liability - provision;
+      return { cash, liability, provision, free };
+    }
+
+    // dir = +1 で適用、dir = -1 で完全ロールバック
+    function applyTxEffect(tx, dir) {
+      const amt = Math.round(Number(tx.amount) || 0) * dir;
+      const acc = tx.accountId ? state.accounts.find(a => a.id === tx.accountId) : null;
+      const liab = tx.liabilityId ? state.liabilities.find(l => l.id === tx.liabilityId) : null;
+      const prov = tx.provisionId ? state.provisions.find(p => p.id === tx.provisionId) : null;
+
+      if (tx.type === 'income') {
+        if (acc) acc.balance += amt;
+      } else if (tx.type === 'expense_cash') {
+        if (acc) acc.balance -= amt;
+      } else if (tx.type === 'expense_credit') {
+        if (liab) liab.balance += amt;
+      } else if (tx.type === 'settlement') {
+        if (acc) acc.balance -= amt;
+        if (liab) liab.balance -= amt;
+      } else if (tx.type === 'provision_alloc') {
+        if (prov) prov.balance += amt;
+      } else if (tx.type === 'expense_provision_cash') {
+        if (prov) prov.balance -= amt;
+        if (acc) acc.balance -= amt;
+      } else if (tx.type === 'expense_provision_credit') {
+        if (prov) prov.balance -= amt;
+        if (liab) liab.balance += amt;
+      }
+    }
+
+    function occursInMonth(item, ym) {
+      if (!item.active) return false;
+      if ((item.appliedMonths || []).includes(ym)) return false;
+      if (item.freq === 'once') return (item.date || '').slice(0, 7) === ym;
+      return (!item.startMonth || ym >= item.startMonth) && (!item.endMonth || ym <= item.endMonth);
+    }
+
+    function getScopeIncome(scope) {
+      const ym0 = curYM();
+      const maxOffset = scope === 'this_month' ? 0 : Math.max(1, Number(scope) || 1);
+      const labels = { this_month: '今月残り', '1': '1ヶ月先まで', '2': '2ヶ月先まで', '3': '3ヶ月先まで', '6': '6ヶ月先まで', '12': '1年先まで' };
+      let total = 0, count = 0;
+      for (let i = 0; i <= maxOffset; i++) {
+        const ym = addMonths(ym0, i);
+        state.scheduled.forEach(item => {
+          if (item.kind === 'income' && occursInMonth(item, ym)) {
+            total += item.amount;
+            count++;
+          }
+        });
+      }
+      return { total, count, label: labels[String(scope)] || '今月残り' };
+    }
+
+    /* ---------------------------------------------------------
+       将来予測エンジン（1ヶ月・3ヶ月・6ヶ月・1年）
+       --------------------------------------------------------- */
+    function computeForecast(horizonOverride = null) {
+      const set = state.settings;
+      const horizon = horizonOverride ?? set.horizon;
+      const totals = getTotals();
+      const ym0 = curYM();
+
+      let runCash = totals.cash;
+      let runFree = totals.free;
+      const provMap = {};
+      state.provisions.forEach(p => { provMap[p.id] = p.balance; });
+      let runProv = totals.provision;
+
+      // 今月実績の変動費合計（変動費見込みの二重計上を防止）
+      const fixedCats = ['住居・家賃', '通信・光熱費'];
+      const spentVarCur = state.transactions
+        .filter(t => (t.date || '').startsWith(ym0) && (t.type === 'expense_cash' || t.type === 'expense_credit') && !fixedCats.includes(t.category) && !t.sourceScheduledId)
+        .reduce((s, t) => s + (Number(t.amount) || 0), 0);
+
+      const months = [];
+      for (let i = 0; i <= horizon; i++) {
+        const ym = addMonths(ym0, i);
+        let mInc = 0, mExp = 0, mSettle = 0, mRes = 0;
+        const lines = [];
+
+        // 1. 確定負債の引き落とし予定（手元キャッシュのみ減額し、実質フリーからは二重控除しない）
+        state.liabilities.forEach(l => {
+          if (l.balance <= 0) return;
+          const dueYm = (l.dueDate || '').slice(0, 7);
+          const effYm = dueYm && dueYm >= ym0 ? dueYm : ym0;
+          if (effYm === ym) {
+            runCash -= l.balance;
+            mSettle += l.balance;
+            lines.push({
+              kind: 'settlement', dateLabel: (l.dueDate || '').slice(5).replace('-', '/') || '予定',
+              title: `${l.name} 引落予定`, note: '手元キャッシュのみ減少（実質フリー控除済）',
+              amount: l.balance, freeDelta: 0, schedId: null
+            });
+          }
+        });
+
+        // 2. 予定収支（予定収入・予定支出・定期引当）
+        state.scheduled.forEach(item => {
+          if (!occursInMonth(item, ym)) return;
+          const dLbl = item.freq === 'once' ? (item.date || '').slice(5).replace('-', '/') : clampDate(ym, item.day).slice(5).replace('-', '/');
+          if (item.kind === 'income') {
+            if (!set.fcIncludeIncome) return;
+            runCash += item.amount;
+            runFree += item.amount;
+            mInc += item.amount;
+            lines.push({
+              kind: 'income', dateLabel: dLbl, title: item.title,
+              note: `入金先: ${nameOf(state.accounts, item.accountId)}`,
+              amount: item.amount, freeDelta: item.amount, schedId: item.id, canApply: i === 0
+            });
+          } else if (item.kind === 'reserve') {
+            runFree -= item.amount;
+            runProv += item.amount;
+            if (item.provisionId) provMap[item.provisionId] = (provMap[item.provisionId] || 0) + item.amount;
+            mRes += item.amount;
+            lines.push({
+              kind: 'reserve', dateLabel: dLbl, title: item.title,
+              note: `積立先: ${nameOf(state.provisions, item.provisionId)}`,
+              amount: item.amount, freeDelta: -item.amount, schedId: item.id, canApply: i === 0
+            });
+          } else if (item.kind === 'expense') {
+            runCash -= item.amount;
+            mExp += item.amount;
+            if (item.useProvisionId && provMap[item.useProvisionId] !== undefined) {
+              const avail = Math.max(0, provMap[item.useProvisionId]);
+              const used = Math.min(avail, item.amount);
+              const short = item.amount - used;
+              provMap[item.useProvisionId] -= used;
+              runProv -= used;
+              runFree -= short;
+              const pn = nameOf(state.provisions, item.useProvisionId);
+              lines.push({
+                kind: 'expense', dateLabel: dLbl, title: item.title,
+                note: short > 0 ? `引当「${pn}」${fmtYen(used)}充当 ／ 不足${fmtYen(short)}はフリーから` : `引当「${pn}」から全額充当（実質フリー不変）`,
+                amount: item.amount, freeDelta: -short, schedId: item.id, canApply: i === 0
+              });
+            } else {
+              runFree -= item.amount;
+              lines.push({
+                kind: 'expense', dateLabel: dLbl, title: item.title,
+                note: `${item.category || '予定支出'} • ${nameOf(state.accounts, item.accountId)}`,
+                amount: item.amount, freeDelta: -item.amount, schedId: item.id, canApply: i === 0
+              });
+            }
+          }
+        });
+
+        // 3. 毎月の変動費見込み
+        if (set.fcIncludeVar && set.fcVarAmount > 0) {
+          const vAmt = i === 0 ? Math.max(0, set.fcVarAmount - spentVarCur) : set.fcVarAmount;
+          if (vAmt > 0) {
+            runCash -= vAmt;
+            runFree -= vAmt;
+            mExp += vAmt;
+            lines.push({
+              kind: 'variable', dateLabel: i === 0 ? '今月残' : '月間',
+              title: i === 0 ? '今月残りの変動費見込み' : '毎月の変動費見込み',
+              note: i === 0 ? `月予算 ${fmtYen(set.fcVarAmount)} − 今月実績 ${fmtYen(spentVarCur)}` : '食費・日用品などの平均予算',
+              amount: vAmt, freeDelta: -vAmt, schedId: null
+            });
+          }
+        }
+
+        lines.sort((a, b) => a.dateLabel.localeCompare(b.dateLabel));
+        months.push({ ym, endCash: runCash, endFree: runFree, endProv: runProv, mInc, mExp, mSettle, mRes, lines });
+      }
+      return months;
+    }
+
+    /* ---------------------------------------------------------
+       共通3段構造カード：予定収入・予定収支レンダラー
+       （1段目: スイッチ+タイトル+金額 / 2段目: 周期+口座 / 3段目: 操作ボタン）
+       --------------------------------------------------------- */
+    function renderSchedCardHTML(item, showKindBadge = false) {
+      const ym0 = curYM();
+      const targetYm = item.freq === 'once' ? (item.date || '').slice(0, 7) : ym0;
+      const applied = (item.appliedMonths || []).includes(targetYm);
+      const cycleText = item.freq === 'once' ? `単発 ${item.date || ''}` : `毎月${item.day}日`;
+
+      const km = {
+        income: { bCls: 'b-emerald', lbl: '予定収入', sign: '+', amtCls: 'text-emerald' },
+        expense: { bCls: 'b-slate', lbl: '予定支出', sign: '-', amtCls: '' },
+        reserve: { bCls: 'b-amber', lbl: '定期引当', sign: '', amtCls: 'text-amber' }
+      }[item.kind] || { bCls: 'b-slate', lbl: item.kind, sign: '', amtCls: '' };
+
+      let metaDetail = '';
+      if (item.kind === 'income') {
+        metaDetail = `入金先: ${esc(nameOf(state.accounts, item.accountId))}`;
+      } else if (item.kind === 'reserve') {
+        metaDetail = `積立先: ${esc(nameOf(state.provisions, item.provisionId))}`;
+      } else {
+        metaDetail = item.useProvisionId
+          ? `引当充当: ${esc(nameOf(state.provisions, item.useProvisionId))}`
+          : `出金元: ${esc(nameOf(state.accounts, item.accountId))}`;
+      }
+
+      return `
+        <div class="sched-card ${item.active ? '' : 'inactive'}">
+          <!-- 1段目：トグルスイッチ＋タイトル（左） ／ 金額（右・折り返しなし） -->
+          <div class="sched-row-top">
+            <div class="sched-top-left">
+              <button type="button" class="switch ${item.active ? 'on' : ''}" onclick="toggleSchedActive('${item.id}')" aria-label="予測に含めるON/OFF"></button>
+              <div class="sched-title">${esc(item.title)}</div>
+            </div>
+            <div class="sched-amount nums ${km.amtCls}">${km.sign}${fmtYen(item.amount)}</div>
+          </div>
+
+          <!-- 2段目：周期・日付バッジ＋口座・引当情報 -->
+          <div class="sched-row-meta">
+            ${showKindBadge ? `<span class="badge ${km.bCls}">${km.lbl}</span>` : ''}
+            <span class="badge b-slate nums">${esc(cycleText)}</span>
+            ${applied ? `<span class="badge b-indigo">${fmtMonthShort(targetYm)} 実績反映済</span>` : ''}
+            <span>${metaDetail}</span>
+          </div>
+
+          <!-- 3段目：操作ボタン群（独立段・重なりゼロ） -->
+          <div class="sched-row-actions">
+            ${!applied
+              ? `<button type="button" class="btn btn-soft-emerald btn-xs" onclick="applySchedToActual('${item.id}','${targetYm}')">実績反映</button>`
+              : `<button type="button" class="btn btn-soft btn-xs" onclick="unmarkSchedApplied('${item.id}','${targetYm}')">反映戻す</button>`}
+            <button type="button" class="btn btn-soft-indigo btn-xs" onclick="openSchedModal(null,'${item.id}')">編集</button>
+            <button type="button" class="btn btn-soft-red btn-xs" onclick="confirmDeleteSched('${item.id}')">取消</button>
+          </div>
+        </div>
+      `;
+    }
+
+    /* ---------------------------------------------------------
+       ナビゲーション・全体再描画
+       --------------------------------------------------------- */
+    function switchTab(tab) {
+      ui.tab = tab;
+      document.querySelectorAll('.tab-view').forEach(el => el.classList.toggle('hidden', el.id !== `view-${tab}`));
+      document.querySelectorAll('#pc-nav .nav-item').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+      document.querySelectorAll('#mobile-nav .mnav-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+      renderCurrentTab();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function renderAll() {
+      const t = getTotals();
+      const set = state.settings;
+      const incInfo = getScopeIncome(set.dashIncomeScope);
+      const sbFree = set.dashIncludeIncome ? t.free + incInfo.total : t.free;
+      document.getElementById('sb-free-lbl').textContent = set.dashIncludeIncome ? `実質フリー（${incInfo.label}込）` : '現在の実質フリー資金';
+      const sbVal = document.getElementById('sb-free-val');
+      sbVal.textContent = fmtYen(sbFree);
+      sbVal.className = `val nums ${sbFree < 0 ? 'text-red' : (set.dashIncludeIncome ? 'text-purple' : 'text-emerald')}`;
+      document.getElementById('sb-cash-sub').textContent = `手元キャッシュ ${fmtYen(t.cash)}`;
+      renderCurrentTab();
+    }
+
+    function renderCurrentTab() {
+      if (ui.tab === 'dashboard') renderDashboard();
+      else if (ui.tab === 'transactions') renderTransactions();
+      else if (ui.tab === 'liabilities') renderLiabilities();
+      else if (ui.tab === 'provisions') renderProvisions();
+      else if (ui.tab === 'forecast') renderForecast();
+    }
+
+    /* ---------------------------------------------------------
+       TAB 1: ホーム（ダッシュボード）
+       --------------------------------------------------------- */
+    function renderDashboard() {
+      const t = getTotals();
+      const set = state.settings;
+      const ym0 = curYM();
+      const incInfo = getScopeIncome(set.dashIncomeScope);
+      const showInc = set.dashIncludeIncome;
+      const dispFree = showInc ? t.free + incInfo.total : t.free;
+
+      // 構成比バー計算
+      const addInc = showInc ? Math.max(0, incInfo.total) : 0;
+      const pLiab = Math.max(0, t.liability);
+      const pProv = Math.max(0, t.provision);
+      const pFree = Math.max(0, t.free);
+      const sumBar = Math.max(1, pLiab + pProv + pFree + addInc);
+      const freeRate = Math.round((Math.max(0, dispFree) / Math.max(1, t.cash + addInc)) * 100);
+
+      // 今月の発生ベース実質支出 vs 実際キャッシュアウト
+      const curAccrual = state.transactions
+        .filter(tx => (tx.date || '').startsWith(ym0) && TX_TYPES[tx.type]?.isAccrualExp)
+        .reduce((s, tx) => s + (Number(tx.amount) || 0), 0);
+      const curActualOut = state.transactions
+        .filter(tx => (tx.date || '').startsWith(ym0) && TX_TYPES[tx.type]?.isActualOut)
+        .reduce((s, tx) => s + (Number(tx.amount) || 0), 0);
+      const maxExp = Math.max(1, curAccrual, curActualOut);
+
+      // 予定収入一覧
+      const incItems = state.scheduled.filter(x => x.kind === 'income');
+
+      // 3ヶ月・6ヶ月見通し
+      const fc6 = computeForecast(6);
+      const p3 = fc6[3] || fc6[fc6.length - 1];
+      const p6 = fc6[6] || fc6[fc6.length - 1];
+
+      // 直近5件
+      const recent = [...state.transactions].sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.id.localeCompare(a.id)).slice(0, 5);
+
+      document.getElementById('view-dashboard').innerHTML = `
+        <div class="page-head">
+          <div>
+            <h2 class="page-title">ホーム</h2>
+            <p class="page-desc">手元キャッシュから確定負債・引当金を引いた「本当に自由に使えるお金」</p>
+          </div>
+          <div class="row">
+            <span class="badge b-slate nums">基準日: ${fmtDate(todayISO())}</span>
+            <button type="button" class="btn btn-primary btn-xs" onclick="openTxModal()">＋ 取引を記録</button>
+          </div>
+        </div>
+
+        <!-- ヒーローカード -->
+        <div class="card">
+          <div class="row-between">
+            <div class="row wrap">
+              <div class="seg">
+                <button type="button" class="seg-btn ${!showInc ? 'active' : ''}" onclick="setDashIncomeMode(false)">確定残高のみ</button>
+                <button type="button" class="seg-btn ${showInc ? 'active-purple' : ''}" onclick="setDashIncomeMode(true)">収入予測を反映</button>
+              </div>
+              ${showInc ? `
+                <select class="select" style="width:auto;padding:6px 10px;font-size:12px;font-weight:700;color:var(--purple);border-color:#c4b5fd;background:var(--purple-bg);" onchange="setDashIncomeScope(this.value)">
+                  ${[['this_month', '今月残りの予定収入'], ['1', '1ヶ月先まで'], ['2', '2ヶ月先まで'], ['3', '3ヶ月先まで'], ['6', '6ヶ月先まで'], ['12', '1年先まで']].map(([v, l]) =>
+                    `<option value="${v}" ${set.dashIncomeScope === v ? 'selected' : ''}>${l}</option>`
+                  ).join('')}
+                </select>
+              ` : ''}
+            </div>
+            <div class="row wrap">
+              <button type="button" class="btn btn-soft-red btn-xs" onclick="openTxModal('expense_credit')">＋クレカ支出</button>
+              <button type="button" class="btn btn-soft btn-xs" onclick="openTxModal('expense_cash')">＋現金支出</button>
+              <button type="button" class="btn btn-soft-amber btn-xs" onclick="openTxModal('expense_provision_cash')">＋引当から使う</button>
+            </div>
+          </div>
+
+          <div style="margin-top:12px;">
+            <div class="row wrap" style="gap:6px;">
+              <span class="badge ${showInc ? 'b-purple' : 'b-emerald'}">
+                ${showInc ? `実質フリー資金（${incInfo.label}の予定収入を反映）` : '実質フリー資金（確定残高ベース）'}
+              </span>
+              ${dispFree < 0 ? `<span class="badge b-red">余力不足・マイナス</span>` : ''}
+            </div>
+            <div class="hero-amount nums ${dispFree < 0 ? 'text-red' : (showInc ? 'text-purple' : '')}">${fmtYen(dispFree)}</div>
+            <p class="page-desc nums" style="margin-top:4px;">
+              ${showInc
+                ? `確定ベース ${fmtYen(t.free)} ＋ 予定収入（${incInfo.label}・${incInfo.count}件）${fmtYen(incInfo.total, true)}`
+                : `手元キャッシュ ${fmtYen(t.cash)} − 確定負債 ${fmtYen(t.liability)} − 引当金 ${fmtYen(t.provision)}`}
+            </p>
+          </div>
+
+          <!-- 計算式バー -->
+          <div class="formula-grid">
+            <div class="formula-box">
+              <div class="k">手元キャッシュ</div>
+              <div class="v nums">${fmtYen(t.cash)}</div>
+            </div>
+            ${showInc ? `
+              <div class="formula-box" style="background:var(--purple-bg);border-color:#ddd6fe;">
+                <div class="k text-purple">＋ 予定収入(${incInfo.label})</div>
+                <div class="v nums text-purple">+${fmtYen(incInfo.total)}</div>
+              </div>
+            ` : ''}
+            <div class="formula-box" style="background:var(--red-bg);border-color:#fecaca;">
+              <div class="k text-red">− 確定負債</div>
+              <div class="v nums text-red">-${fmtYen(t.liability)}</div>
+            </div>
+            <div class="formula-box" style="background:var(--amber-bg);border-color:#fde68a;">
+              <div class="k text-amber">− 引当金合計</div>
+              <div class="v nums text-amber">-${fmtYen(t.provision)}</div>
+            </div>
+            <div class="formula-box dark">
+              <div class="k">＝ 実質フリー${showInc ? '(予測込)' : ''}</div>
+              <div class="v nums" style="color:${dispFree < 0 ? '#fda4af' : '#34d399'}">${fmtYen(dispFree)}</div>
+            </div>
+          </div>
+
+          <!-- 構成比バー -->
+          <div style="margin-top:12px;">
+            <div class="row-between" style="font-size:11.5px;color:var(--text-muted);">
+              <span>${showInc ? 'キャッシュ＋予定収入の構成比' : '手元キャッシュの構成比'}</span>
+              <strong class="nums" style="color:var(--text);">実質フリー率 ${freeRate}%</strong>
+            </div>
+            <div class="stack-bar">
+              <div class="stack-seg" style="width:${(pLiab / sumBar) * 100}%;background:var(--red);"></div>
+              <div class="stack-seg" style="width:${(pProv / sumBar) * 100}%;background:#f59e0b;"></div>
+              <div class="stack-seg" style="width:${(pFree / sumBar) * 100}%;background:var(--emerald);"></div>
+              <div class="stack-seg" style="width:${(addInc / sumBar) * 100}%;background:var(--purple);"></div>
+            </div>
+            <div class="legend">
+              <span><i class="legend-dot" style="background:var(--red);"></i>確定負債</span>
+              <span><i class="legend-dot" style="background:#f59e0b;"></i>引当金</span>
+              <span><i class="legend-dot" style="background:var(--emerald);"></i>実質フリー(確定)</span>
+              ${showInc ? `<span class="text-purple" style="font-weight:700;"><i class="legend-dot" style="background:var(--purple);"></i>予定収入(${incInfo.label})</span>` : ''}
+            </div>
+          </div>
+        </div>
+
+        <!-- 4つのサマリーカード -->
+        <div class="grid-4">
+          <div class="card card-tight">
+            <div class="row-between"><span style="font-size:11.5px;font-weight:700;color:var(--text-muted);">手元キャッシュ</span><button type="button" class="btn-icon" onclick="openDataModal()" title="口座管理">⚙</button></div>
+            <div class="nums" style="font-size:19px;font-weight:800;margin-top:4px;">${fmtYen(t.cash)}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:3px;">${state.accounts.length}口座合計</div>
+          </div>
+          <div class="card card-tight">
+            <div class="row-between"><span style="font-size:11.5px;font-weight:700;color:var(--red);">確定負債</span><button type="button" class="btn-icon" onclick="switchTab('liabilities')" title="負債へ">→</button></div>
+            <div class="nums text-red" style="font-size:19px;font-weight:800;margin-top:4px;">${fmtYen(t.liability)}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:3px;">未払 ${state.liabilities.filter(l => l.balance > 0).length}件</div>
+          </div>
+          <div class="card card-tight">
+            <div class="row-between"><span style="font-size:11.5px;font-weight:700;color:var(--amber);">引当金合計</span><button type="button" class="btn-icon" onclick="switchTab('provisions')" title="引当へ">→</button></div>
+            <div class="nums text-amber" style="font-size:19px;font-weight:800;margin-top:4px;">${fmtYen(t.provision)}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:3px;">${state.provisions.length}枠で確保中</div>
+          </div>
+          <div class="card card-tight" style="border-color:#ddd6fe;">
+            <div class="row-between"><span style="font-size:11.5px;font-weight:700;color:var(--purple);">今月の予定収入残</span><button type="button" class="btn-icon" onclick="switchTab('forecast')" title="予測へ">→</button></div>
+            <div class="nums text-purple" style="font-size:19px;font-weight:800;margin-top:4px;">${fmtYen(getScopeIncome('this_month').total)}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:3px;">未反映 ${getScopeIncome('this_month').count}件</div>
+          </div>
+        </div>
+
+        <!-- 予定収入クイック管理カード（スマホ最適化3段レイアウト） -->
+        <div class="card" style="border-color:#c4b5fd;">
+          <div class="row-between" style="margin-bottom:12px;">
+            <div style="min-width:0;flex:1;">
+              <div class="row wrap" style="gap:6px;">
+                <h3 style="font-size:15px;font-weight:800;">予定収入クイック管理</h3>
+                <span class="badge b-purple">${incItems.length}件</span>
+              </div>
+              <p class="page-desc">給与・ボーナスなどの予定収入をワンタップでON/OFF・編集・実績反映・取消できます</p>
+            </div>
+            <button type="button" class="btn btn-purple btn-sm" onclick="openSchedModal('income')">＋ 予定収入を追加</button>
+          </div>
+
+          ${incItems.length === 0
+            ? `<div class="empty">予定収入はまだ登録されていません。「＋ 予定収入を追加」から登録してください。</div>`
+            : `<div class="stack-list">${incItems.map(item => renderSchedCardHTML(item, false)).join('')}</div>`}
+        </div>
+
+        <!-- 今月の発生ベース実質支出 vs 実際キャッシュアウト ＋ 3ヶ月・6ヶ月見通し -->
+        <div class="grid-2">
+          <!-- 発生ベース vs 実際CF 比較バー -->
+          <div class="card" style="display:flex;flex-direction:column;justify-content:space-between;gap:14px;">
+            <div>
+              <h3 style="font-size:14.5px;font-weight:800;">今月の実質支出 vs 実際キャッシュアウト</h3>
+              <p class="page-desc">クレカ利用日ベースの実質支出と、実際に口座・財布から出た金額を比較</p>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px;">
+              <div>
+                <div class="row-between" style="font-size:12.5px;">
+                  <span style="font-weight:700;color:var(--indigo);">発生ベース実質支出（現金＋クレカ利用）</span>
+                  <strong class="nums text-indigo">${fmtYen(curAccrual)}</strong>
+                </div>
+                <div class="prog-track">
+                  <div class="prog-fill" style="width:${curAccrual > 0 ? Math.max(4, Math.round((curAccrual / maxExp) * 100)) : 0}%;background:var(--indigo);"></div>
+                </div>
+              </div>
+              <div>
+                <div class="row-between" style="font-size:12.5px;">
+                  <span style="font-weight:700;color:var(--text-sub);">実際キャッシュアウト（口座・財布出金）</span>
+                  <strong class="nums">${fmtYen(curActualOut)}</strong>
+                </div>
+                <div class="prog-track">
+                  <div class="prog-fill" style="width:${curActualOut > 0 ? Math.max(4, Math.round((curActualOut / maxExp) * 100)) : 0}%;background:#334155;"></div>
+                </div>
+              </div>
+            </div>
+            <div class="info-banner" style="font-size:11.5px;">
+              差額 <strong class="nums">${fmtYen(curAccrual - curActualOut, true)}</strong>（クレカ利用と引き落とし日のタイムラグ分）
+            </div>
+          </div>
+
+          <!-- 3ヶ月後・6ヶ月後の見通しミニカード -->
+          <div class="card" style="background:linear-gradient(135deg,#0f172a,#1e1b4b);color:#fff;border:none;display:flex;flex-direction:column;justify-content:space-between;gap:14px;">
+            <div>
+              <div class="row-between">
+                <span style="font-size:12px;font-weight:700;color:#a5b4fc;">将来キャッシュ見通し</span>
+                <span class="badge" style="background:rgba(255,255,255,0.12);color:#e2e8f0;">
+                  ${set.fcIncludeIncome ? '収入予測あり' : '収入予測なし'}${set.fcIncludeVar ? `・変動費${fmtYen(set.fcVarAmount)}` : ''}
+                </span>
+              </div>
+              <div class="grid-2" style="margin-top:12px;">
+                <div style="background:rgba(255,255,255,0.09);padding:12px;border-radius:11px;">
+                  <div style="font-size:11px;color:#c7d2fe;">3ヶ月後 (${fmtMonthShort(p3.ym)})</div>
+                  <div style="font-size:10px;color:#cbd5e1;margin-top:2px;">実質フリー予測</div>
+                  <div class="nums" style="font-size:18px;font-weight:800;color:${p3.endFree < 0 ? '#fda4af' : '#34d399'};">${fmtYen(p3.endFree)}</div>
+                  <div class="nums" style="font-size:11px;color:#cbd5e1;margin-top:2px;">現金 ${fmtYen(p3.endCash)}</div>
+                </div>
+                <div style="background:rgba(255,255,255,0.09);padding:12px;border-radius:11px;">
+                  <div style="font-size:11px;color:#c7d2fe;">6ヶ月後 (${fmtMonthShort(p6.ym)})</div>
+                  <div style="font-size:10px;color:#cbd5e1;margin-top:2px;">実質フリー予測</div>
+                  <div class="nums" style="font-size:18px;font-weight:800;color:${p6.endFree < 0 ? '#fda4af' : '#34d399'};">${fmtYen(p6.endFree)}</div>
+                  <div class="nums" style="font-size:11px;color:#cbd5e1;margin-top:2px;">現金 ${fmtYen(p6.endCash)}</div>
+                </div>
+              </div>
+            </div>
+            <button type="button" class="btn btn-emerald" onclick="switchTab('forecast')">将来予測グラフ・月別明細を見る →</button>
+          </div>
+        </div>
+
+        <!-- 最近の取引（直近5件） -->
+        <div class="list-box">
+          <div class="list-head">
+            <strong style="color:var(--text);">最近の取引（直近5件）</strong>
+            <button type="button" class="btn btn-soft btn-xs" onclick="switchTab('transactions')">履歴をすべて見る →</button>
+          </div>
+          ${recent.length === 0 ? `<div class="empty">取引がまだありません。「＋ 取引を記録」から始めましょう。</div>` : recent.map(tx => txRowHTML(tx, false)).join('')}
+        </div>
+      `;
+    }
+
+    function setDashIncomeMode(on) { state.settings.dashIncludeIncome = !!on; saveState(); renderAll(); }
+    function setDashIncomeScope(scope) { state.settings.dashIncomeScope = scope; saveState(); renderAll(); }
+
+    /* ---------------------------------------------------------
+       TAB 2: 履歴（上下段レイアウト・複数選択一括削除・完全ロールバック）
+       --------------------------------------------------------- */
+    function getFilteredTransactions() {
+      const kw = ui.txSearch.trim().toLowerCase();
+      return state.transactions.filter(tx => {
+        const meta = TX_TYPES[tx.type] || {};
+        if (ui.txFilter === 'actual' && !meta.isActual) return false;
+        if (ui.txFilter === 'income' && tx.type !== 'income') return false;
+        if (ui.txFilter === 'expense_cash' && tx.type !== 'expense_cash') return false;
+        if (ui.txFilter === 'expense_credit' && tx.type !== 'expense_credit') return false;
+        if (ui.txFilter === 'settlement' && tx.type !== 'settlement') return false;
+        if (ui.txFilter === 'provision_alloc' && tx.type !== 'provision_alloc') return false;
+        if (ui.txFilter === 'expense_provision' && !['expense_provision_cash', 'expense_provision_credit'].includes(tx.type)) return false;
+        if (kw) {
+          const hay = [tx.memo, tx.category, txTargetLabel(tx)].join(' ').toLowerCase();
+          if (!hay.includes(kw)) return false;
+        }
+        return true;
+      }).sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.id.localeCompare(a.id));
+    }
+
+    function txTargetLabel(tx) {
+      if (tx.type === 'income' || tx.type === 'expense_cash') return nameOf(state.accounts, tx.accountId);
+      if (tx.type === 'expense_credit') return nameOf(state.liabilities, tx.liabilityId);
+      if (tx.type === 'settlement') return `${nameOf(state.accounts, tx.accountId)} → ${nameOf(state.liabilities, tx.liabilityId)}`;
+      if (tx.type === 'provision_alloc') return nameOf(state.provisions, tx.provisionId);
+      if (tx.type === 'expense_provision_cash') return `${nameOf(state.provisions, tx.provisionId)} (${nameOf(state.accounts, tx.accountId)})`;
+      if (tx.type === 'expense_provision_credit') return `${nameOf(state.provisions, tx.provisionId)} (${nameOf(state.liabilities, tx.liabilityId)})`;
+      return '';
+    }
+
+    function txRowHTML(tx, withCheck) {
+      const m = TX_TYPES[tx.type] || { label: tx.type, color: 'b-slate', sign: '', cls: '' };
+      const checked = withCheck && ui.selectedTx.has(tx.id);
+      return `
+        <div class="tx-row ${checked ? 'selected' : ''}">
+          <!-- 上段：チェック＋タイトル（左） ／ 金額（右・nowrap） -->
+          <div class="tx-row-top">
+            <div class="tx-row-left">
+              ${withCheck ? `<input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleTxSelect('${tx.id}',this.checked)" aria-label="取引を選択" />` : ''}
+              <div class="tx-row-title">${esc(tx.memo || tx.category || m.label)}</div>
+            </div>
+            <strong class="nums nowrap ${m.cls}" style="font-size:15px;">${m.sign}${fmtYen(tx.amount)}</strong>
+          </div>
+          <!-- 下段：日付・種別バッジ・対象口座 ／ 削除ボタン -->
+          <div class="tx-row-bottom">
+            <div class="tx-row-meta">
+              <span class="nums" style="font-weight:700;">${fmtDate(tx.date)}</span>
+              <span class="badge ${m.color}">${m.label}</span>
+              <span>${esc(tx.category || '')} • ${esc(txTargetLabel(tx))}</span>
+            </div>
+            <button type="button" class="btn btn-soft-red btn-xs" onclick="confirmDeleteTx(['${tx.id}'])" title="削除（残高ロールバック）">削除</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderTransactions() {
+      const list = getFilteredTransactions();
+      const existIds = new Set(state.transactions.map(t => t.id));
+      [...ui.selectedTx].forEach(id => { if (!existIds.has(id)) ui.selectedTx.delete(id); });
+
+      const selCount = ui.selectedTx.size;
+      const visibleIds = list.map(t => t.id);
+      const allVisSelected = visibleIds.length > 0 && visibleIds.every(id => ui.selectedTx.has(id));
+      const sumAmt = list.reduce((s, t) => s + (Number(t.amount) || 0), 0);
+
+      document.getElementById('view-transactions').innerHTML = `
+        <div class="page-head">
+          <div>
+            <h2 class="page-title">取引履歴</h2>
+            <p class="page-desc">チェックで複数選択・一括削除可能。削除時は口座・負債・引当残高を自動で元に戻します</p>
+          </div>
+          <button type="button" class="btn btn-primary btn-sm" onclick="openTxModal()">＋ 取引を記録</button>
+        </div>
+
+        <div class="card card-tight" style="display:flex;flex-direction:column;gap:10px;">
+          <div class="row wrap" style="gap:6px;">
+            ${[
+              ['all', 'すべて'],
+              ['actual', '実際キャッシュフローのみ'],
+              ['income', '収入'],
+              ['expense_cash', '現金支出'],
+              ['expense_credit', 'クレカ支出'],
+              ['settlement', '負債精算'],
+              ['provision_alloc', '引当積立'],
+              ['expense_provision', '引当から支出']
+            ].map(([k, l]) => `
+              <button type="button" class="btn btn-xs ${ui.txFilter === k ? 'btn-primary' : 'btn-soft'}" onclick="setTxFilter('${k}')">${l}</button>
+            `).join('')}
+          </div>
+          <div class="row-between">
+            <input type="text" class="input" style="max-width:300px;padding:7px 11px;font-size:13px;" value="${esc(ui.txSearch)}" placeholder="メモ・カテゴリ・口座名で検索" oninput="ui.txSearch=this.value;renderTransactions();" />
+            <div class="nums" style="font-size:12px;color:var(--text-sub);">
+              表示 <strong>${list.length}件</strong> ／ 合計 <strong>${fmtYen(sumAmt)}</strong>
+            </div>
+          </div>
+        </div>
+
+        ${selCount > 0 ? `
+          <div class="bulk-bar">
+            <strong class="nums" style="font-size:13.5px;">✓ ${selCount}件選択中</strong>
+            <div class="row wrap" style="gap:6px;">
+              <button type="button" class="btn btn-xs" style="background:rgba(255,255,255,0.16);color:#fff;" onclick="selectAllVisibleTx()">すべて選択</button>
+              <button type="button" class="btn btn-xs" style="background:rgba(255,255,255,0.16);color:#fff;" onclick="clearTxSelection()">解除</button>
+              <button type="button" class="btn btn-red btn-xs" onclick="confirmDeleteTx([...ui.selectedTx])">一括削除 (${selCount}件)</button>
+            </div>
+          </div>
+        ` : ''}
+
+        <div class="list-box">
+          <div class="list-head">
+            <label class="row" style="cursor:pointer;font-weight:700;color:var(--text);">
+              <input type="checkbox" ${allVisSelected ? 'checked' : ''} onchange="toggleAllVisibleTx(this.checked)" />
+              <span>表示中の取引をすべて選択</span>
+            </label>
+            <span style="font-size:11px;">削除時は残高を自動ロールバック</span>
+          </div>
+          ${list.length === 0 ? `<div class="empty">条件に一致する取引履歴はありません</div>` : list.map(tx => txRowHTML(tx, true)).join('')}
+        </div>
+      `;
+    }
+
+    function setTxFilter(f) { ui.txFilter = f; ui.selectedTx.clear(); renderTransactions(); }
+    function toggleTxSelect(id, chk) { if (chk) ui.selectedTx.add(id); else ui.selectedTx.delete(id); renderTransactions(); }
+    function toggleAllVisibleTx(chk) {
+      if (chk) getFilteredTransactions().forEach(t => ui.selectedTx.add(t.id));
+      else ui.selectedTx.clear();
+      renderTransactions();
+    }
+    function selectAllVisibleTx() { getFilteredTransactions().forEach(t => ui.selectedTx.add(t.id)); renderTransactions(); }
+    function clearTxSelection() { ui.selectedTx.clear(); renderTransactions(); }
+
+    function confirmDeleteTx(ids) {
+      if (!ids || !ids.length) return;
+      openConfirm(
+        ids.length === 1 ? 'この取引を削除しますか？' : `選択した${ids.length}件の取引を一括削除しますか？`,
+        '削除すると、取引種別に応じて口座残高・負債残高・引当金残高が自動で元へロールバックされます。',
+        () => {
+          const delSet = new Set(ids);
+          const toDelete = state.transactions.filter(t => delSet.has(t.id));
+          toDelete.forEach(tx => {
+            applyTxEffect(tx, -1);
+            if (tx.sourceScheduledId && tx.sourceMonth) {
+              const sc = state.scheduled.find(s => s.id === tx.sourceScheduledId);
+              if (sc) sc.appliedMonths = (sc.appliedMonths || []).filter(m => m !== tx.sourceMonth);
+            }
+          });
+          state.transactions = state.transactions.filter(t => !delSet.has(t.id));
+          ids.forEach(id => ui.selectedTx.delete(id));
+          saveState();
+          renderAll();
+          showToast(toDelete.length === 1 ? '取引を削除し残高を元に戻しました' : `${toDelete.length}件を一括削除し残高を元に戻しました`);
+        }
+      );
+    }
+
+    /* ---------------------------------------------------------
+       TAB 3: 負債・クレカ管理（スマホ上下段カード・金額編集＆精算）
+       --------------------------------------------------------- */
+    function renderLiabilities() {
+      const t = getTotals();
+      document.getElementById('view-liabilities').innerHTML = `
+        <div class="page-head">
+          <div>
+            <h2 class="page-title">負債・クレカ管理</h2>
+            <p class="page-desc">確定負債の金額・引き落とし予定日を変更すると、実質フリー資金と将来予測に即時反映されます</p>
+          </div>
+          <button type="button" class="btn btn-primary btn-sm" onclick="openLiabModal()">＋ 負債・カード追加</button>
+        </div>
+
+        <div class="card" style="background:linear-gradient(135deg,#dc2626,#e11d48);color:#fff;border:none;">
+          <div class="row-between">
+            <div>
+              <div style="font-size:12px;opacity:0.9;">確定負債 未精算合計</div>
+              <div class="nums" style="font-size:28px;font-weight:800;margin-top:2px;">${fmtYen(t.liability)}</div>
+            </div>
+            <div style="font-size:11.5px;max-width:390px;background:rgba(255,255,255,0.14);padding:10px 12px;border-radius:10px;line-height:1.45;">
+              利用時点で実質フリー資金から控除済みです。「精算」で口座から引き落としても実質フリー資金はブレません。確定明細とのズレは「編集」から直接変更できます。
+            </div>
+          </div>
+        </div>
+
+        ${state.liabilities.length === 0 ? `<div class="card empty">負債・カードはまだありません。「＋ 負債・カード追加」から登録できます。</div>` : `
+          <div class="grid-2">
+            ${state.liabilities.map(l => `
+              <div class="card" style="display:flex;flex-direction:column;justify-content:space-between;gap:12px;">
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                  <!-- 上段：名称＋状態バッジ -->
+                  <div class="sched-row-top">
+                    <div class="sched-title" style="font-size:15px;">${esc(l.name)}</div>
+                    <span class="badge ${l.balance > 0 ? 'b-red' : 'b-emerald'}">${l.balance > 0 ? '引落待ち' : '精算済'}</span>
+                  </div>
+                  <!-- 中段：金額ボックス＋日付・メモ -->
+                  <div style="padding:11px 13px;border-radius:11px;background:var(--bg);border:1px solid var(--border);display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;">
+                    <span style="font-size:11.5px;color:var(--text-muted);font-weight:700;">現在の未払残高</span>
+                    <strong class="nums nowrap ${l.balance > 0 ? 'text-red' : 'text-emerald'}" style="font-size:22px;">${fmtYen(l.balance)}</strong>
+                  </div>
+                  <div class="sched-row-meta">
+                    <span class="badge b-slate nums">引落予定: ${fmtDate(l.dueDate)}</span>
+                    ${l.memo ? `<span>${esc(l.memo)}</span>` : ''}
+                  </div>
+                </div>
+
+                <!-- 下段：操作ボタン群 -->
+                <div style="display:flex;flex-direction:column;gap:8px;padding-top:10px;border-top:1px solid var(--border-soft);">
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
+                    <button type="button" class="btn btn-primary btn-xs" style="flex:1;" ${l.balance <= 0 ? 'disabled' : ''} onclick="openSettleModal('${l.id}')">精算</button>
+                    <button type="button" class="btn btn-soft-indigo btn-xs" style="flex:1;" onclick="openLiabModal('${l.id}')">編集</button>
+                    <button type="button" class="btn btn-soft-red btn-xs" style="flex:1;" onclick="confirmDeleteLiab('${l.id}')">削除</button>
+                  </div>
+                  <button type="button" class="btn btn-soft btn-xs" onclick="openTxModal('expense_credit','${l.id}')">＋ このカードで支出を記録</button>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `}
+      `;
+    }
+
+    /* ---------------------------------------------------------
+       TAB 4: 引当金管理（スマホ上下段カード）
+       --------------------------------------------------------- */
+    function renderProvisions() {
+      const t = getTotals();
+      const targetSum = state.provisions.reduce((s, p) => s + (Number(p.target) || 0), 0);
+      document.getElementById('view-provisions').innerHTML = `
+        <div class="page-head">
+          <div>
+            <h2 class="page-title">引当金管理（将来の予定枠）</h2>
+            <p class="page-desc">旅行や年払いなどの特別費を先に取り分け。使うときは引当枠から支払うため実質フリー資金に影響しません</p>
+          </div>
+          <button type="button" class="btn btn-primary btn-sm" onclick="openProvModal()">＋ 引当枠を追加</button>
+        </div>
+
+        <div class="card row-between">
+          <div>
+            <div style="font-size:12px;color:var(--text-muted);font-weight:700;">引当金 残高合計</div>
+            <div class="nums text-amber" style="font-size:26px;font-weight:800;">${fmtYen(t.provision)}</div>
+          </div>
+          <div class="row" style="gap:18px;">
+            <div>
+              <div style="font-size:11px;color:var(--text-muted);">目標合計</div>
+              <strong class="nums">${fmtYen(targetSum)}</strong>
+            </div>
+            <div>
+              <div style="font-size:11px;color:var(--text-muted);">運用枠数</div>
+              <strong>${state.provisions.length}枠</strong>
+            </div>
+          </div>
+        </div>
+
+        ${state.provisions.length === 0 ? `<div class="card empty">引当枠がまだありません。「＋ 引当枠を追加」から作成できます。</div>` : `
+          <div class="grid-2">
+            ${state.provisions.map(p => {
+              const pct = p.target > 0 ? Math.min(100, Math.max(0, Math.round((p.balance / p.target) * 100))) : 0;
+              return `
+                <div class="card" style="display:flex;flex-direction:column;justify-content:space-between;gap:12px;">
+                  <div style="display:flex;flex-direction:column;gap:8px;">
+                    <!-- 上段：枠名＋残高 -->
+                    <div class="sched-row-top">
+                      <div class="sched-title" style="font-size:15px;">${esc(p.name)}</div>
+                      <strong class="nums nowrap ${p.balance < 0 ? 'text-red' : 'text-amber'}" style="font-size:20px;">${fmtYen(p.balance)}</strong>
+                    </div>
+                    <!-- 中段：目標進捗・メモ -->
+                    <div class="sched-row-meta">
+                      <span class="badge b-slate nums">${p.target > 0 ? `目標 ${fmtYen(p.target)} (${pct}%)` : '目標未設定'}</span>
+                      ${p.memo ? `<span>${esc(p.memo)}</span>` : ''}
+                    </div>
+                    ${p.target > 0 ? `
+                      <div class="prog-track">
+                        <div class="prog-fill" style="width:${pct}%;background:${pct >= 100 ? 'var(--emerald)' : '#f59e0b'};"></div>
+                      </div>
+                    ` : ''}
+                  </div>
+                  <!-- 下段：操作ボタン群 -->
+                  <div style="display:flex;flex-direction:column;gap:8px;padding-top:10px;border-top:1px solid var(--border-soft);">
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                      <button type="button" class="btn btn-soft-amber btn-xs" style="flex:1;" onclick="openTxModal('provision_alloc',null,'${p.id}')">＋ 積立する</button>
+                      <button type="button" class="btn btn-primary btn-xs" style="flex:1;" onclick="openTxModal('expense_provision_cash',null,'${p.id}')">引当から使う</button>
+                    </div>
+                    <div style="display:flex;gap:8px;justify-content:flex-end;">
+                      <button type="button" class="btn btn-soft-indigo btn-xs" onclick="openProvModal('${p.id}')">残高調整・編集</button>
+                      <button type="button" class="btn btn-soft-red btn-xs" onclick="confirmDeleteProv('${p.id}')">削除</button>
+                    </div>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        `}
+      `;
+    }
+
+    /* ---------------------------------------------------------
+       TAB 5: 予測（1M/3M/6M/1Y・SVGグラフ・サブタブ切替）
+       --------------------------------------------------------- */
+    function renderForecast() {
+      const set = state.settings;
+      const months = computeForecast(set.horizon);
+      const validYms = months.map(m => m.ym);
+      if (!ui.lookupMonth || !validYms.includes(ui.lookupMonth)) ui.lookupMonth = validYms[validYms.length - 1];
+      const lk = months.find(m => m.ym === ui.lookupMonth) || months[0];
+
+      // SVGチャート用ポイント（現在＋各月末）
+      const totals = getTotals();
+      const pts = [
+        { label: '現在', title: '現在（基準日）', cash: totals.cash, free: totals.free },
+        ...months.map(m => ({ label: fmtMonthShort(m.ym), title: fmtMonthJP(m.ym) + '末 予測', cash: m.endCash, free: m.endFree }))
+      ];
+      const focusIdx = (ui.chartFocusIdx !== null && ui.chartFocusIdx < pts.length) ? ui.chartFocusIdx : pts.length - 1;
+      const focusPt = pts[focusIdx];
+      const negMonths = months.filter(m => m.endFree < 0);
+
+      // 予定収支フィルタ
+      const schedList = state.scheduled.filter(x => ui.schedFilter === 'all' || x.kind === ui.schedFilter);
+
+      document.getElementById('view-forecast').innerHTML = `
+        <div class="page-head">
+          <div>
+            <h2 class="page-title">将来予測シミュレーター</h2>
+            <p class="page-desc">予定収入・固定費・クレカ引落・変動費見込みから「〇月末にいくら残るか」を試算</p>
+          </div>
+          <div class="seg">
+            ${[[1, '1ヶ月'], [3, '3ヶ月'], [6, '6ヶ月'], [12, '1年']].map(([h, l]) =>
+              `<button type="button" class="seg-btn ${set.horizon === h ? 'active-slate' : ''}" onclick="setForecastHorizon(${h})">${l}</button>`
+            ).join('')}
+          </div>
+        </div>
+
+        <!-- シミュレーション条件 -->
+        <div class="card card-tight" style="display:flex;flex-direction:column;gap:12px;">
+          <div class="row-between">
+            <div style="min-width:0;flex:1;">
+              <strong style="font-size:13.5px;">収入予測の反映</strong>
+              <p class="page-desc">OFFにすると現在の手元資金だけで何ヶ月持つかを確認できます</p>
+            </div>
+            <div class="seg">
+              <button type="button" class="seg-btn ${set.fcIncludeIncome ? 'active-emerald' : ''}" onclick="setForecastInc(true)">収入予測あり</button>
+              <button type="button" class="seg-btn ${!set.fcIncludeIncome ? 'active-slate' : ''}" onclick="setForecastInc(false)">収入予測なし</button>
+            </div>
+          </div>
+          <div style="border-top:1px solid var(--border-soft);padding-top:12px;" class="row-between">
+            <label class="row" style="cursor:pointer;flex:1;min-width:200px;">
+              <input type="checkbox" ${set.fcIncludeVar ? 'checked' : ''} onchange="setForecastVarToggle(this.checked)" />
+              <div style="min-width:0;">
+                <strong style="font-size:13.5px;">毎月の変動費見込み</strong>
+                <div style="font-size:11.5px;color:var(--text-muted);">食費・日用品などの平均予算（今月は実績分を自動控除）</div>
+              </div>
+            </label>
+            <div class="input-yen-wrap" style="width:155px;flex-shrink:0;">
+              <span>¥</span>
+              <input type="text" inputmode="numeric" id="fc-var-input" class="input" style="padding-top:7px;padding-bottom:7px;font-size:13.5px;" value="${fmtNumStr(set.fcVarAmount)}" ${set.fcIncludeVar ? '' : 'disabled'} oninput="fmtComma(this);updateForecastVarAmount(this.value)" />
+            </div>
+          </div>
+        </div>
+
+        <!-- 「〇月末にいくら残る？」クイック照会 -->
+        <div class="card" style="background:linear-gradient(135deg,#eef2ff,#ffffff,#ecfdf5);border-color:#c7d2fe;">
+          <div class="row-between" style="margin-bottom:12px;">
+            <div>
+              <strong style="font-size:14.5px;">「〇月末にいくら残る？」クイック照会</strong>
+              <p class="page-desc">月を選ぶとその月末時点の予測残高をすぐに確認できます</p>
+            </div>
+            <select class="select" style="width:auto;font-weight:700;border-color:#a5b4fc;" onchange="ui.lookupMonth=this.value;renderForecast();">
+              ${months.map((m, idx) => `<option value="${m.ym}" ${m.ym === ui.lookupMonth ? 'selected' : ''}>${fmtMonthJP(m.ym)}末${idx === 0 ? '（今月末）' : (idx === 12 ? '（1年後）' : `（${idx}ヶ月後）`)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="grid-3">
+            <div class="card card-tight">
+              <div style="font-size:11.5px;color:var(--text-muted);font-weight:700;">予測 手元キャッシュ</div>
+              <div class="nums ${lk.endCash < 0 ? 'text-red' : ''}" style="font-size:20px;font-weight:800;margin-top:3px;">${fmtYen(lk.endCash)}</div>
+            </div>
+            <div class="card card-tight" style="border-color:${lk.endFree < 0 ? '#fca5a5' : '#a7f3d0'};">
+              <div style="font-size:11.5px;color:${lk.endFree < 0 ? 'var(--red)' : 'var(--emerald)'};font-weight:700;">予測 実質フリー資金</div>
+              <div class="nums ${lk.endFree < 0 ? 'text-red' : 'text-emerald'}" style="font-size:20px;font-weight:800;margin-top:3px;">${fmtYen(lk.endFree)}</div>
+            </div>
+            <div class="card card-tight">
+              <div style="font-size:11.5px;color:var(--amber);font-weight:700;">予測 引当金累計</div>
+              <div class="nums text-amber" style="font-size:20px;font-weight:800;margin-top:3px;">${fmtYen(lk.endProv)}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- インラインSVG 2本線推移グラフ -->
+        <div class="card">
+          <div class="row-between" style="margin-bottom:8px;">
+            <div>
+              <strong style="font-size:14.5px;">月末残高の推移グラフ（タップ・ホバーで数値確認）</strong>
+              <div class="legend" style="margin-top:4px;">
+                <span><i class="legend-dot" style="background:var(--indigo);"></i>手元キャッシュ</span>
+                <span><i class="legend-dot" style="background:var(--emerald);"></i>実質フリー資金</span>
+                <span><i class="legend-dot" style="background:var(--red);"></i>赤字ライン (¥0以下)</span>
+              </div>
+            </div>
+            ${negMonths.length > 0 ? `<span class="badge b-red">⚠ ${fmtMonthShort(negMonths[0].ym)}〜 赤字見込</span>` : `<span class="badge b-emerald">期間内すべて黒字見込</span>`}
+          </div>
+          <div class="chart-readout">
+            <strong>${esc(focusPt.title)}</strong>
+            <div class="row wrap nums" style="gap:12px;">
+              <span>手元キャッシュ: <strong class="${focusPt.cash < 0 ? 'text-red' : 'text-indigo'}">${fmtYen(focusPt.cash)}</strong></span>
+              <span>実質フリー: <strong class="${focusPt.free < 0 ? 'text-red' : 'text-emerald'}">${fmtYen(focusPt.free)}</strong></span>
+            </div>
+          </div>
+          <div class="chart-wrap">${buildDualLineSVG(pts, focusIdx)}</div>
+        </div>
+
+        <!-- グラフ下サブタブ切替 ＋ 新規追加ボタン -->
+        <div class="row-between">
+          <div class="seg">
+            <button type="button" class="seg-btn ${ui.fcSubTab === 'monthly' ? 'active-slate' : ''}" onclick="ui.fcSubTab='monthly';renderForecast();">月別キャッシュ予測</button>
+            <button type="button" class="seg-btn ${ui.fcSubTab === 'scheduled' ? 'active-slate' : ''}" onclick="ui.fcSubTab='scheduled';renderForecast();">予定収支の管理 (${state.scheduled.length})</button>
+          </div>
+          <div class="row wrap" style="gap:6px;">
+            <button type="button" class="btn btn-purple btn-xs" onclick="openSchedModal('income')">＋予定収入</button>
+            <button type="button" class="btn btn-primary btn-xs" onclick="openSchedModal('expense')">＋予定支出</button>
+            <button type="button" class="btn btn-soft-amber btn-xs" onclick="openSchedModal('reserve')">＋定期引当</button>
+          </div>
+        </div>
+
+        <!-- SUB-TAB A: 月別キャッシュ予測アコーディオン -->
+        <div class="${ui.fcSubTab === 'monthly' ? '' : 'hidden'} stack-list">
+          ${months.map((m, idx) => {
+            const open = ui.expandedMonths.has(m.ym);
+            return `
+              <div class="acc-item ${m.endFree < 0 ? 'warn' : ''}">
+                <button type="button" class="acc-trigger" onclick="toggleMonthExpand('${m.ym}')">
+                  <div class="acc-head-row">
+                    <div class="row" style="gap:6px;min-width:0;">
+                      <span style="color:var(--text-muted);font-weight:800;width:12px;">${open ? '▾' : '▸'}</span>
+                      <strong class="nums" style="font-size:14.5px;">${fmtMonthJP(m.ym)}</strong>
+                      ${idx === 0 ? `<span class="badge b-indigo">今月残</span>` : ''}
+                      ${m.endFree < 0 ? `<span class="badge b-red">赤字警告</span>` : ''}
+                    </div>
+                    <div style="text-align:right;" class="nowrap">
+                      <div style="font-size:10px;color:var(--text-muted);">月末実質フリー</div>
+                      <strong class="nums ${m.endFree < 0 ? 'text-red' : 'text-emerald'}" style="font-size:15px;">${fmtYen(m.endFree)}</strong>
+                    </div>
+                  </div>
+                  <div class="acc-metrics-grid nums">
+                    <div class="acc-mini-pill"><span class="text-muted">収入</span><strong class="text-emerald">+${fmtYen(m.mInc)}</strong></div>
+                    <div class="acc-mini-pill"><span class="text-muted">支出</span><strong>-${fmtYen(m.mExp)}</strong></div>
+                    <div class="acc-mini-pill"><span class="text-muted">引落</span><strong class="${m.mSettle > 0 ? 'text-red' : ''}">-${fmtYen(m.mSettle)}</strong></div>
+                    <div class="acc-mini-pill"><span class="text-muted">月末現金</span><strong class="${m.endCash < 0 ? 'text-red' : ''}">${fmtYen(m.endCash)}</strong></div>
+                  </div>
+                </button>
+                ${open ? `
+                  <div class="acc-panel">
+                    ${m.lines.length === 0 ? `<div style="font-size:12px;color:var(--text-muted);padding:4px;">この月の予定項目はありません</div>` : m.lines.map(li => {
+                      const bMap = { income: ['b-emerald', '予定収入'], expense: ['b-slate', '予定支出'], settlement: ['b-red', '負債引落'], reserve: ['b-amber', '引当積立'], variable: ['b-indigo', '変動費見込'] };
+                      const [bc, bl] = bMap[li.kind] || ['b-slate', li.kind];
+                      return `
+                        <div class="acc-line">
+                          <!-- 上段：タイトル＋金額 -->
+                          <div class="sched-row-top">
+                            <div class="sched-title" style="font-size:13.5px;">${esc(li.title)}</div>
+                            <strong class="sched-amount nums ${li.kind === 'income' ? 'text-emerald' : (li.kind === 'settlement' ? 'text-red' : '')}" style="font-size:14.5px;">
+                              ${li.kind === 'income' ? '+' : '-'}${fmtYen(li.amount)}
+                            </strong>
+                          </div>
+                          <!-- 中段：バッジ・日付・メモ・フリー影響 -->
+                          <div class="sched-row-meta">
+                            <span class="badge ${bc}">${bl}</span>
+                            <span class="badge b-slate nums">${esc(li.dateLabel)}</span>
+                            <span>${esc(li.note)}</span>
+                            <span class="nums" style="margin-left:auto;font-weight:700;">フリー ${li.freeDelta === 0 ? '不変' : fmtYen(li.freeDelta, true)}</span>
+                          </div>
+                          <!-- 下段：予定項目の直編集アクション -->
+                          ${li.schedId ? `
+                            <div class="sched-row-actions">
+                              ${li.canApply ? `<button type="button" class="btn btn-soft-emerald btn-xs" onclick="applySchedToActual('${li.schedId}','${m.ym}')">実績反映</button>` : ''}
+                              <button type="button" class="btn btn-soft-indigo btn-xs" onclick="openSchedModal(null,'${li.schedId}')">編集</button>
+                              <button type="button" class="btn btn-soft-red btn-xs" onclick="confirmDeleteSched('${li.schedId}')">取消</button>
+                            </div>
+                          ` : ''}
+                        </div>
+                      `;
+                    }).join('')}
+                  </div>
+                ` : ''}
+              </div>
+            `;
+          }).join('')}
+        </div>
+
+        <!-- SUB-TAB B: 予定収支の管理（3段構造カード一覧） -->
+        <div class="${ui.fcSubTab === 'scheduled' ? '' : 'hidden'} card">
+          <div class="row wrap" style="margin-bottom:12px;gap:6px;">
+            ${[['all', 'すべて'], ['income', '予定収入'], ['expense', '予定支出'], ['reserve', '定期引当']].map(([k, l]) =>
+              `<button type="button" class="btn btn-xs ${ui.schedFilter === k ? 'btn-primary' : 'btn-soft'}" onclick="ui.schedFilter='${k}';renderForecast();">${l}</button>`
+            ).join('')}
+          </div>
+          ${schedList.length === 0
+            ? `<div class="empty">該当する予定項目はありません。上のボタンから追加できます。</div>`
+            : `<div class="stack-list">${schedList.map(item => renderSchedCardHTML(item, true)).join('')}</div>`}
+        </div>
+      `;
+    }
+
+    // 軽量インラインSVG 2本線推移グラフ生成
+    function buildDualLineSVG(pts, focusIdx) {
+      const W = 700, H = 230, padL = 56, padR = 20, padT = 18, padB = 34;
+      const plotW = W - padL - padR, plotH = H - padT - padB;
+      const allVals = pts.flatMap(p => [p.cash, p.free]).concat([0]);
+      let minV = Math.min(...allVals), maxV = Math.max(...allVals);
+      if (maxV === minV) { maxV += 100000; minV -= 50000; }
+      const margin = (maxV - minV) * 0.14;
+      maxV += margin; minV -= margin;
+
+      const xOf = i => padL + (pts.length === 1 ? plotW / 2 : (i / (pts.length - 1)) * plotW);
+      const yOf = v => padT + ((maxV - v) / (maxV - minV)) * plotH;
+      const y0 = yOf(0);
+
+      let gridHTML = '';
+      for (let g = 0; g <= 4; g++) {
+        const val = maxV - ((maxV - minV) * g) / 4;
+        const y = yOf(val);
+        const lbl = Math.abs(val) >= 10000 ? `${Math.round(val / 10000)}万` : `${Math.round(val)}`;
+        gridHTML += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="#e2e8f0" stroke-width="1"/>`;
+        gridHTML += `<text x="${padL - 8}" y="${y + 4}" text-anchor="end" font-size="11" fill="#64748b">${lbl}</text>`;
+      }
+
+      const negRect = y0 < padT + plotH
+        ? `<rect x="${padL}" y="${Mat
