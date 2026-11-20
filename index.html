@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -1964,4 +1963,994 @@
       }
 
       const negRect = y0 < padT + plotH
-        ? `<rect x="${padL}" y="${Mat
+        ? `<rect x="${padL}" y="${Math.max(padT, y0)}" width="${plotW}" height="${Math.max(0, padT + plotH - Math.max(padT, y0))}" fill="rgba(220,38,38,0.06)"/>`
+        : '';
+      const zeroLine = (y0 >= padT && y0 <= padT + plotH)
+        ? `<line x1="${padL}" y1="${y0}" x2="${W - padR}" y2="${y0}" stroke="#dc2626" stroke-width="1.3" stroke-dasharray="4 4"/>`
+        : '';
+
+      const cashPath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${xOf(i).toFixed(1)},${yOf(p.cash).toFixed(1)}`).join(' ');
+      const freePath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${xOf(i).toFixed(1)},${yOf(p.free).toFixed(1)}`).join(' ');
+      const baseClampY = Math.min(padT + plotH, Math.max(padT, y0));
+      const freeArea = `${freePath} L${xOf(pts.length - 1).toFixed(1)},${baseClampY.toFixed(1)} L${xOf(0).toFixed(1)},${baseClampY.toFixed(1)} Z`;
+
+      const step = pts.length > 8 ? 2 : 1;
+      const dotsAndHits = pts.map((p, i) => {
+        const x = xOf(i), yc = yOf(p.cash), yf = yOf(p.free);
+        const isFoc = i === focusIdx;
+        const showLbl = i === 0 || i === pts.length - 1 || i % step === 0;
+        const hitW = Math.max(26, plotW / pts.length);
+        return `
+          ${isFoc ? `<line x1="${x}" y1="${padT}" x2="${x}" y2="${padT + plotH}" stroke="#94a3b8" stroke-width="1" stroke-dasharray="3 3"/>` : ''}
+          <circle cx="${x}" cy="${yc}" r="${isFoc ? 5 : 3.5}" fill="#4f46e5" stroke="#fff" stroke-width="1.5"/>
+          <circle cx="${x}" cy="${yf}" r="${isFoc ? 5.5 : 4}" fill="${p.free < 0 ? '#dc2626' : '#059669'}" stroke="#fff" stroke-width="1.5"/>
+          ${showLbl ? `<text x="${x}" y="${H - 10}" text-anchor="middle" font-size="11" font-weight="${isFoc ? '800' : '600'}" fill="${isFoc ? '#0f172a' : '#64748b'}">${esc(p.label)}</text>` : ''}
+          <rect x="${x - hitW / 2}" y="${padT}" width="${hitW}" height="${plotH + 22}" fill="transparent" style="cursor:pointer;" onmouseenter="focusChartPoint(${i})" onclick="focusChartPoint(${i})"/>
+        `;
+      }).join('');
+
+      return `
+        <svg class="chart-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="月末残高推移グラフ">
+          ${gridHTML}${negRect}${zeroLine}
+          <path d="${freeArea}" fill="rgba(5,150,105,0.10)"/>
+          <path d="${cashPath}" fill="none" stroke="#4f46e5" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+          <path d="${freePath}" fill="none" stroke="#059669" stroke-width="2.8" stroke-linejoin="round" stroke-linecap="round"/>
+          ${dotsAndHits}
+        </svg>
+      `;
+    }
+
+    function focusChartPoint(idx) { ui.chartFocusIdx = idx; renderForecast(); }
+    function setForecastHorizon(h) { state.settings.horizon = h; ui.lookupMonth = addMonths(curYM(), h); ui.chartFocusIdx = null; saveState(); renderForecast(); }
+    function setForecastInc(on) { state.settings.fcIncludeIncome = !!on; saveState(); renderForecast(); }
+    function setForecastVarToggle(chk) { state.settings.fcIncludeVar = !!chk; saveState(); renderForecast(); }
+    function updateForecastVarAmount(val) {
+      state.settings.fcVarAmount = Math.max(0, parseYen(val));
+      saveState();
+      clearTimeout(window._fcTimer);
+      window._fcTimer = setTimeout(() => {
+        const hadFocus = document.activeElement && document.activeElement.id === 'fc-var-input';
+        renderForecast();
+        if (hadFocus) {
+          const inp = document.getElementById('fc-var-input');
+          if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+        }
+      }, 320);
+    }
+    function toggleMonthExpand(ym) {
+      if (ui.expandedMonths.has(ym)) ui.expandedMonths.delete(ym);
+      else ui.expandedMonths.add(ym);
+      renderForecast();
+    }
+
+    /* ---------------------------------------------------------
+       予定収支アクション（ON/OFF・実績反映・取消）
+       --------------------------------------------------------- */
+    function toggleSchedActive(id) {
+      const it = state.scheduled.find(x => x.id === id);
+      if (!it) return;
+      it.active = !it.active;
+      saveState();
+      renderAll();
+      showToast(it.active ? `「${it.title}」を予測に含めました` : `「${it.title}」を予測からOFFにしました`);
+    }
+
+    function applySchedToActual(id, targetYm) {
+      const it = state.scheduled.find(x => x.id === id);
+      if (!it) return;
+      const applied = it.appliedMonths || [];
+      if (applied.includes(targetYm)) { showToast('この月はすでに実績へ反映済みです', true); return; }
+
+      const txDate = it.freq === 'once' ? (it.date || todayISO()) : clampDate(targetYm, it.day);
+      const accId = (state.accounts.find(a => a.id === it.accountId) || state.accounts[0]).id;
+      let tx = null;
+
+      if (it.kind === 'income') {
+        tx = { id: uid('tx'), date: txDate, type: 'income', amount: it.amount, accountId: accId, category: it.category || '給与', memo: `${it.title}（予定反映）`, sourceScheduledId: it.id, sourceMonth: targetYm };
+      } else if (it.kind === 'expense') {
+        if (it.useProvisionId && state.provisions.some(p => p.id === it.useProvisionId)) {
+          tx = { id: uid('tx'), date: txDate, type: 'expense_provision_cash', amount: it.amount, accountId: accId, provisionId: it.useProvisionId, category: it.category || '特別費', memo: `${it.title}（予定反映）`, sourceScheduledId: it.id, sourceMonth: targetYm };
+        } else {
+          tx = { id: uid('tx'), date: txDate, type: 'expense_cash', amount: it.amount, accountId: accId, category: it.category || 'その他', memo: `${it.title}（予定反映）`, sourceScheduledId: it.id, sourceMonth: targetYm };
+        }
+      } else if (it.kind === 'reserve') {
+        const pId = (state.provisions.find(p => p.id === it.provisionId) || state.provisions[0] || {}).id;
+        if (!pId) { showToast('積立先の引当枠がありません', true); return; }
+        tx = { id: uid('tx'), date: txDate, type: 'provision_alloc', amount: it.amount, provisionId: pId, category: '特別費', memo: `${it.title}（予定反映）`, sourceScheduledId: it.id, sourceMonth: targetYm };
+      }
+
+      if (tx) {
+        state.transactions.push(tx);
+        applyTxEffect(tx, +1);
+        it.appliedMonths = [...applied, targetYm];
+        saveState();
+        renderAll();
+        showToast(`「${it.title}」(${fmtYen(it.amount)}) を実績に反映しました`);
+      }
+    }
+
+    function unmarkSchedApplied(id, targetYm) {
+      const it = state.scheduled.find(x => x.id === id);
+      if (!it) return;
+      it.appliedMonths = (it.appliedMonths || []).filter(m => m !== targetYm);
+      saveState();
+      renderAll();
+      showToast(`${fmtMonthShort(targetYm)}の反映済マークを解除しました`);
+    }
+
+    function confirmDeleteSched(id) {
+      const it = state.scheduled.find(x => x.id === id);
+      if (!it) return;
+      openConfirm(
+        `予定「${it.title}」を取り消しますか？`,
+        'この予定項目を削除し、将来予測および収入予測から除外します（実績反映済みの取引履歴はそのまま残ります）。',
+        () => {
+          state.scheduled = state.scheduled.filter(x => x.id !== id);
+          saveState();
+          renderAll();
+          showToast(`予定「${it.title}」を取り消しました`);
+        }
+      );
+    }
+
+    /* ---------------------------------------------------------
+       モーダル＆確認ダイアログ＆トースト（alert/confirm不使用）
+       --------------------------------------------------------- */
+    function openModalHTML(html, sizeClass = '') {
+      const root = document.getElementById('modal-root');
+      root.innerHTML = `<div class="modal-backdrop" onclick="if(event.target===this)closeModal()"><div class="modal ${sizeClass}">${html}</div></div>`;
+      root.classList.remove('hidden');
+    }
+    function closeModal() {
+      const root = document.getElementById('modal-root');
+      root.classList.add('hidden');
+      root.innerHTML = '';
+    }
+
+    let _confirmCb = null;
+    function openConfirm(title, msg, onOk) {
+      _confirmCb = onOk;
+      const root = document.getElementById('confirm-root');
+      root.innerHTML = `
+        <div class="modal-backdrop" onclick="if(event.target===this)closeConfirm()">
+          <div class="modal modal-sm">
+            <div class="modal-head"><h3>${esc(title)}</h3></div>
+            <div class="modal-body"><p style="font-size:13px;color:var(--text-sub);">${esc(msg)}</p></div>
+            <div class="modal-foot">
+              <button type="button" class="btn btn-soft btn-sm" onclick="closeConfirm()">キャンセル</button>
+              <button type="button" class="btn btn-red btn-sm" onclick="runConfirm()">実行する</button>
+            </div>
+          </div>
+        </div>
+      `;
+      root.classList.remove('hidden');
+    }
+    function closeConfirm() {
+      const root = document.getElementById('confirm-root');
+      root.classList.add('hidden');
+      root.innerHTML = '';
+      _confirmCb = null;
+    }
+    function runConfirm() {
+      const fn = _confirmCb;
+      closeConfirm();
+      if (typeof fn === 'function') fn();
+    }
+
+    function showToast(msg, isErr = false) {
+      const wrap = document.getElementById('toast-wrap');
+      const div = document.createElement('div');
+      div.className = `toast ${isErr ? 'err' : ''}`;
+      div.textContent = msg;
+      wrap.appendChild(div);
+      setTimeout(() => div.remove(), 2800);
+    }
+
+    /* ---------------------------------------------------------
+       MODAL 1: 取引登録（全7種別）
+       --------------------------------------------------------- */
+    function openTxModal(defaultType = 'expense_cash', presetLiabId = null, presetProvId = null) {
+      if (['expense_credit', 'settlement', 'expense_provision_credit'].includes(defaultType) && state.liabilities.length === 0) {
+        showToast('先に「負債・クレカ」タブでカードを追加してください', true); return;
+      }
+      if (['provision_alloc', 'expense_provision_cash', 'expense_provision_credit'].includes(defaultType) && state.provisions.length === 0) {
+        showToast('先に「引当金」タブで引当枠を追加してください', true); return;
+      }
+
+      openModalHTML(`
+        <div class="modal-head">
+          <h3>取引を記録</h3>
+          <button type="button" class="btn-icon" onclick="closeModal()">✕</button>
+        </div>
+        <form onsubmit="submitTx(event)">
+          <div class="modal-body">
+            <div class="field">
+              <label>取引種別</label>
+              <select id="m-tx-type" class="select" onchange="updateTxFormUI()">
+                <option value="expense_cash">現金・口座支出</option>
+                <option value="expense_credit" ${state.liabilities.length === 0 ? 'disabled' : ''}>クレカ・後払い支出</option>
+                <option value="income">収入</option>
+                <option value="settlement" ${state.liabilities.length === 0 ? 'disabled' : ''}>負債の引き落とし精算</option>
+                <option value="provision_alloc" ${state.provisions.length === 0 ? 'disabled' : ''}>引当金へ積立</option>
+                <option value="expense_provision_cash" ${state.provisions.length === 0 ? 'disabled' : ''}>引当から支出（現金・口座）</option>
+                <option value="expense_provision_credit" ${state.provisions.length === 0 || state.liabilities.length === 0 ? 'disabled' : ''}>引当から支出（クレカ）</option>
+              </select>
+            </div>
+            <div id="m-tx-banner" class="info-banner"></div>
+            <div class="grid-2">
+              <div class="field">
+                <label>金額 (円)</label>
+                <div class="input-yen-wrap">
+                  <span>¥</span>
+                  <input type="text" inputmode="numeric" id="m-tx-amt" class="input" required placeholder="0" oninput="fmtComma(this);updateTxFormUI()" />
+                </div>
+              </div>
+              <div class="field">
+                <label>日付</label>
+                <input type="date" id="m-tx-date" class="input" required value="${todayISO()}" />
+              </div>
+            </div>
+            <div id="m-tx-acc-wrap" class="field">
+              <label>対象の口座・財布</label>
+              <select id="m-tx-acc" class="select">
+                ${state.accounts.map(a => `<option value="${a.id}">${esc(a.name)} (${fmtYen(a.balance)})</option>`).join('')}
+              </select>
+            </div>
+            <div id="m-tx-liab-wrap" class="field hidden">
+              <label>対象のカード・負債</label>
+              <select id="m-tx-liab" class="select">
+                ${state.liabilities.map(l => `<option value="${l.id}" ${l.id === presetLiabId ? 'selected' : ''}>${esc(l.name)} (残 ${fmtYen(l.balance)})</option>`).join('')}
+              </select>
+            </div>
+            <div id="m-tx-prov-wrap" class="field hidden">
+              <label>対象の引当金枠</label>
+              <select id="m-tx-prov" class="select">
+                ${state.provisions.map(p => `<option value="${p.id}" ${p.id === presetProvId ? 'selected' : ''}>${esc(p.name)} (残 ${fmtYen(p.balance)})</option>`).join('')}
+              </select>
+            </div>
+            <div class="grid-2">
+              <div class="field">
+                <label>カテゴリ</label>
+                <select id="m-tx-cat" class="select"></select>
+              </div>
+              <div class="field">
+                <label>メモ</label>
+                <input type="text" id="m-tx-memo" class="input" placeholder="例：スーパー、給与、ホテル予約" />
+              </div>
+            </div>
+          </div>
+          <div class="modal-foot">
+            <button type="button" class="btn btn-soft btn-sm" onclick="closeModal()">キャンセル</button>
+            <button type="submit" class="btn btn-primary btn-sm">記録を保存</button>
+          </div>
+        </form>
+      `);
+
+      document.getElementById('m-tx-type').value = defaultType;
+      updateTxFormUI(true);
+      setTimeout(() => { const el = document.getElementById('m-tx-amt'); if (el) el.focus(); }, 40);
+    }
+
+    function updateTxFormUI(resetCats = false) {
+      const type = document.getElementById('m-tx-type').value;
+      const amt = parseYen(document.getElementById('m-tx-amt').value);
+      const s = amt > 0 ? fmtYen(amt) : '入力額';
+
+      const needAcc = ['income', 'expense_cash', 'settlement', 'expense_provision_cash'].includes(type);
+      const needLiab = ['expense_credit', 'settlement', 'expense_provision_credit'].includes(type);
+      const needProv = ['provision_alloc', 'expense_provision_cash', 'expense_provision_credit'].includes(type);
+
+      document.getElementById('m-tx-acc-wrap').classList.toggle('hidden', !needAcc);
+      document.getElementById('m-tx-liab-wrap').classList.toggle('hidden', !needLiab);
+      document.getElementById('m-tx-prov-wrap').classList.toggle('hidden', !needProv);
+
+      const catSel = document.getElementById('m-tx-cat');
+      const curCat = catSel.value;
+      const cats = type === 'income' ? CAT_INC : (type === 'settlement' ? ['負債精算'] : (type === 'provision_alloc' ? ['引当積立', '特別費'] : CAT_EXP));
+      if (resetCats || !cats.includes(curCat)) {
+        catSel.innerHTML = cats.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+      }
+
+      const b = document.getElementById('m-tx-banner');
+      const map = {
+        income: ['emerald', `手元キャッシュ <strong>+${s}</strong> ／ 実質フリー <strong>+${s}</strong>`],
+        expense_cash: ['', `手元キャッシュ <strong>-${s}</strong> ／ 実質フリー <strong>-${s}</strong>`],
+        expense_credit: ['red', `手元キャッシュ不変 ／ 確定負債 <strong>+${s}</strong> ／ 実質フリーから即 <strong>-${s}</strong>`],
+        settlement: ['indigo', `手元キャッシュ <strong>-${s}</strong> と確定負債 <strong>-${s}</strong> が相殺（<strong>実質フリー不変</strong>）`],
+        provision_alloc: ['amber', `手元キャッシュ不変 ／ 引当残高 <strong>+${s}</strong> ／ 実質フリー <strong>-${s}</strong>`],
+        expense_provision_cash: ['amber', `引当残高 <strong>-${s}</strong>・手元キャッシュ <strong>-${s}</strong>（<strong>実質フリー不変</strong>）`],
+        expense_provision_credit: ['amber', `引当残高 <strong>-${s}</strong>・確定負債 <strong>+${s}</strong>（<strong>実質フリー不変</strong>）`]
+      };
+      const [cls, html] = map[type] || ['', ''];
+      b.className = `info-banner ${cls}`;
+      b.innerHTML = html;
+    }
+
+    function submitTx(e) {
+      e.preventDefault();
+      const type = document.getElementById('m-tx-type').value;
+      const amount = parseYen(document.getElementById('m-tx-amt').value);
+      const date = document.getElementById('m-tx-date').value;
+      if (amount <= 0) { showToast('1円以上の金額を入力してください', true); return; }
+
+      const tx = {
+        id: uid('tx'), date, type, amount,
+        category: document.getElementById('m-tx-cat').value,
+        memo: document.getElementById('m-tx-memo').value.trim()
+      };
+      if (['income', 'expense_cash', 'settlement', 'expense_provision_cash'].includes(type)) tx.accountId = document.getElementById('m-tx-acc').value;
+      if (['expense_credit', 'settlement', 'expense_provision_credit'].includes(type)) tx.liabilityId = document.getElementById('m-tx-liab').value;
+      if (['provision_alloc', 'expense_provision_cash', 'expense_provision_credit'].includes(type)) tx.provisionId = document.getElementById('m-tx-prov').value;
+
+      state.transactions.push(tx);
+      applyTxEffect(tx, +1);
+      saveState();
+      closeModal();
+      renderAll();
+      showToast('取引を記録しました');
+    }
+
+    /* ---------------------------------------------------------
+       MODAL 2: 負債・クレカの追加・金額編集（リアルタイム影響表示）
+       --------------------------------------------------------- */
+    function openLiabModal(editId = null) {
+      const l = editId ? state.liabilities.find(x => x.id === editId) : null;
+      const orig = l ? l.balance : 0;
+      const defaultDue = l ? l.dueDate : clampDate(addMonths(curYM(), 1), 27);
+
+      openModalHTML(`
+        <div class="modal-head">
+          <h3>${l ? '負債・クレカの編集（金額変更）' : '負債・カードを追加'}</h3>
+          <button type="button" class="btn-icon" onclick="closeModal()">✕</button>
+        </div>
+        <form onsubmit="submitLiab(event,'${editId || ''}')">
+          <div class="modal-body">
+            <div class="field">
+              <label>名称</label>
+              <input type="text" id="m-liab-name" class="input" required value="${esc(l ? l.name : '')}" placeholder="例：楽天カード（翌月引落）" />
+            </div>
+            <div class="field">
+              <label>負債金額（残高・円）</label>
+              <div class="input-yen-wrap">
+                <span>¥</span>
+                <input type="text" inputmode="numeric" id="m-liab-amt" class="input" required value="${fmtNumStr(orig)}" oninput="fmtComma(this);previewLiabEdit(${orig})" />
+              </div>
+            </div>
+            <div id="m-liab-prev" class="info-banner"></div>
+            <div class="field">
+              <label>引き落とし予定日</label>
+              <input type="date" id="m-liab-due" class="input" required value="${defaultDue}" />
+            </div>
+            <div class="field">
+              <label>メモ（任意）</label>
+              <input type="text" id="m-liab-memo" class="input" value="${esc(l ? l.memo : '')}" placeholder="確定明細に合わせて金額調整など" />
+            </div>
+          </div>
+          <div class="modal-foot">
+            <button type="button" class="btn btn-soft btn-sm" onclick="closeModal()">キャンセル</button>
+            <button type="submit" class="btn btn-primary btn-sm">保存する</button>
+          </div>
+        </form>
+      `);
+      previewLiabEdit(orig);
+    }
+
+    function previewLiabEdit(orig) {
+      const next = Math.max(0, parseYen(document.getElementById('m-liab-amt').value));
+      const diff = next - orig;
+      const freeImp = -diff;
+      const el = document.getElementById('m-liab-prev');
+      el.className = `info-banner ${freeImp < 0 ? 'red' : (freeImp > 0 ? 'emerald' : '')}`;
+      el.innerHTML = `
+        <div class="row-between"><span>現在 → 変更後</span><strong class="nums">${fmtYen(orig)} → ${fmtYen(next)}</strong></div>
+        <div class="row-between" style="margin-top:4px;"><span>負債の差額</span><strong class="nums">${diff === 0 ? '¥0（変更なし）' : fmtYen(diff, true)}</strong></div>
+        <div class="row-between" style="margin-top:4px;padding-top:4px;border-top:1px solid rgba(0,0,0,0.08);"><span>実質フリー資金への影響</span><strong class="nums">${freeImp === 0 ? '変動なし' : `${fmtYen(freeImp, true)}`}</strong></div>
+      `;
+    }
+
+    function submitLiab(e, editId) {
+      e.preventDefault();
+      const name = document.getElementById('m-liab-name').value.trim();
+      const balance = Math.max(0, parseYen(document.getElementById('m-liab-amt').value));
+      const dueDate = document.getElementById('m-liab-due').value;
+      const memo = document.getElementById('m-liab-memo').value.trim();
+      if (!name) return;
+
+      if (editId) {
+        const l = state.liabilities.find(x => x.id === editId);
+        if (l) Object.assign(l, { name, balance, dueDate, memo });
+        showToast(`「${name}」を更新しました（${fmtYen(balance)}）`);
+      } else {
+        state.liabilities.push({ id: uid('liab'), name, balance, dueDate, memo });
+        showToast(`負債「${name}」を追加しました`);
+      }
+      saveState();
+      closeModal();
+      renderAll();
+    }
+
+    function confirmDeleteLiab(id) {
+      const l = state.liabilities.find(x => x.id === id);
+      if (!l) return;
+      openConfirm(`「${l.name}」を削除しますか？`, '削除すると未払残高が確定負債と将来予測から除外されます。', () => {
+        state.liabilities = state.liabilities.filter(x => x.id !== id);
+        saveState(); renderAll(); showToast('負債を削除しました');
+      });
+    }
+
+    /* ---------------------------------------------------------
+       MODAL 3: 負債精算（全額セット＆一部精算）
+       --------------------------------------------------------- */
+    function openSettleModal(liabId) {
+      const l = state.liabilities.find(x => x.id === liabId);
+      if (!l || l.balance <= 0) return;
+
+      openModalHTML(`
+        <div class="modal-head">
+          <h3>負債の引き落とし精算</h3>
+          <button type="button" class="btn-icon" onclick="closeModal()">✕</button>
+        </div>
+        <form onsubmit="submitSettle(event,'${l.id}')">
+          <div class="modal-body">
+            <div class="info-banner red row-between">
+              <strong>${esc(l.name)}</strong>
+              <strong class="nums">未払残高 ${fmtYen(l.balance)}</strong>
+            </div>
+            <div class="field">
+              <div class="row-between">
+                <label>精算金額（一部精算も可）</label>
+                <button type="button" class="btn btn-soft-indigo btn-xs" onclick="setFullSettle(${l.balance})">全額をセット</button>
+              </div>
+              <div class="input-yen-wrap">
+                <span>¥</span>
+                <input type="text" inputmode="numeric" id="m-set-amt" class="input" required value="${fmtNumStr(l.balance)}" oninput="fmtComma(this);previewSettle(${l.balance})" />
+              </div>
+            </div>
+            <div class="grid-2">
+              <div class="field">
+                <label>引き落とし元口座</label>
+                <select id="m-set-acc" class="select">
+                  ${state.accounts.map(a => `<option value="${a.id}">${esc(a.name)} (${fmtYen(a.balance)})</option>`).join('')}
+                </select>
+              </div>
+              <div class="field">
+                <label>精算日</label>
+                <input type="date" id="m-set-date" class="input" required value="${todayISO()}" />
+              </div>
+            </div>
+            <div id="m-set-prev" class="info-banner indigo"></div>
+          </div>
+          <div class="modal-foot">
+            <button type="button" class="btn btn-soft btn-sm" onclick="closeModal()">キャンセル</button>
+            <button type="submit" class="btn btn-primary btn-sm">精算を実行</button>
+          </div>
+        </form>
+      `);
+      previewSettle(l.balance);
+    }
+
+    function setFullSettle(maxAmt) {
+      document.getElementById('m-set-amt').value = fmtNumStr(maxAmt);
+      previewSettle(maxAmt);
+    }
+    function previewSettle(curBal) {
+      const amt = Math.max(0, parseYen(document.getElementById('m-set-amt').value));
+      const rem = curBal - amt;
+      document.getElementById('m-set-prev').innerHTML = `
+        <div class="row-between"><span>精算後の未払残高</span><strong class="nums">${rem === 0 ? '¥0（全額精算）' : fmtYen(rem)}</strong></div>
+        <div style="font-size:11px;margin-top:4px;">手元キャッシュと負債が同時に相殺されるため、実質フリー資金は変わりません。</div>
+      `;
+    }
+    function submitSettle(e, liabId) {
+      e.preventDefault();
+      const l = state.liabilities.find(x => x.id === liabId);
+      const amount = parseYen(document.getElementById('m-set-amt').value);
+      const accountId = document.getElementById('m-set-acc').value;
+      const date = document.getElementById('m-set-date').value;
+      if (!l || amount <= 0) { showToast('正しい精算金額を入力してください', true); return; }
+
+      const tx = { id: uid('tx'), date, type: 'settlement', amount, accountId, liabilityId: liabId, category: '負債精算', memo: `${l.name} 精算` };
+      state.transactions.push(tx);
+      applyTxEffect(tx, +1);
+      saveState();
+      closeModal();
+      renderAll();
+      showToast(`${l.name} を ${fmtYen(amount)} 精算しました`);
+    }
+
+    /* ---------------------------------------------------------
+       MODAL 4: 引当金枠の追加・残高調整・編集
+       --------------------------------------------------------- */
+    function openProvModal(editId = null) {
+      const p = editId ? state.provisions.find(x => x.id === editId) : null;
+      const orig = p ? p.balance : 0;
+      openModalHTML(`
+        <div class="modal-head">
+          <h3>${p ? '引当枠を編集（残高調整）' : '引当枠を追加'}</h3>
+          <button type="button" class="btn-icon" onclick="closeModal()">✕</button>
+        </div>
+        <form onsubmit="submitProv(event,'${editId || ''}')">
+          <div class="modal-body">
+            <div class="field">
+              <label>引当枠の名称</label>
+              <input type="text" id="m-prov-name" class="input" required value="${esc(p ? p.name : '')}" placeholder="例：旅行引当金、車検積立" />
+            </div>
+            <div class="grid-2">
+              <div class="field">
+                <label>現在残高 (円)</label>
+                <div class="input-yen-wrap">
+                  <span>¥</span>
+                  <input type="text" inputmode="numeric" id="m-prov-bal" class="input" required value="${fmtNumStr(orig)}" oninput="fmtComma(this)" />
+                </div>
+              </div>
+              <div class="field">
+                <label>目標額 (円 / 任意)</label>
+                <div class="input-yen-wrap">
+                  <span>¥</span>
+                  <input type="text" inputmode="numeric" id="m-prov-tgt" class="input" value="${fmtNumStr(p ? p.target : 100000)}" oninput="fmtComma(this)" />
+                </div>
+              </div>
+            </div>
+            <div class="field">
+              <label>メモ（任意）</label>
+              <input type="text" id="m-prov-memo" class="input" value="${esc(p ? p.memo : '')}" placeholder="用途や積立ペースなど" />
+            </div>
+          </div>
+          <div class="modal-foot">
+            <button type="button" class="btn btn-soft btn-sm" onclick="closeModal()">キャンセル</button>
+            <button type="submit" class="btn btn-primary btn-sm">保存する</button>
+          </div>
+        </form>
+      `);
+    }
+
+    function submitProv(e, editId) {
+      e.preventDefault();
+      const name = document.getElementById('m-prov-name').value.trim();
+      const balance = Math.max(0, parseYen(document.getElementById('m-prov-bal').value));
+      const target = Math.max(0, parseYen(document.getElementById('m-prov-tgt').value));
+      const memo = document.getElementById('m-prov-memo').value.trim();
+      if (!name) return;
+
+      if (editId) {
+        const p = state.provisions.find(x => x.id === editId);
+        if (p) Object.assign(p, { name, balance, target, memo });
+        showToast(`引当枠「${name}」を更新しました`);
+      } else {
+        state.provisions.push({ id: uid('prov'), name, balance, target, memo });
+        showToast(`引当枠「${name}」を追加しました`);
+      }
+      saveState();
+      closeModal();
+      renderAll();
+    }
+
+    function confirmDeleteProv(id) {
+      const p = state.provisions.find(x => x.id === id);
+      if (!p) return;
+      openConfirm(`引当枠「${p.name}」を削除しますか？`, '削除すると確保されていた残高は実質フリー資金へ戻ります。', () => {
+        state.provisions = state.provisions.filter(x => x.id !== id);
+        saveState(); renderAll(); showToast('引当枠を削除しました');
+      });
+    }
+
+    /* ---------------------------------------------------------
+       MODAL 5: 予定収支の登録・編集
+       --------------------------------------------------------- */
+    function openSchedModal(defaultKind = 'income', editId = null) {
+      const item = editId ? state.scheduled.find(x => x.id === editId) : null;
+      const kind = item ? item.kind : (defaultKind || 'income');
+      const freq = item ? item.freq : 'monthly';
+      const ym0 = curYM();
+
+      if (kind === 'reserve' && state.provisions.length === 0) {
+        showToast('先に「引当金」タブで引当枠を作成してください', true); return;
+      }
+
+      openModalHTML(`
+        <div class="modal-head">
+          <h3>${item ? '予定収支を編集' : '予定収支を登録'}</h3>
+          <button type="button" class="btn-icon" onclick="closeModal()">✕</button>
+        </div>
+        <form onsubmit="submitSched(event,'${editId || ''}')">
+          <div class="modal-body">
+            <div class="field">
+              <label>種別</label>
+              <select id="m-sc-kind" class="select" onchange="updateSchedFormUI()">
+                <option value="income" ${kind === 'income' ? 'selected' : ''}>予定収入 (+)</option>
+                <option value="expense" ${kind === 'expense' ? 'selected' : ''}>予定支出・固定費 (−)</option>
+                <option value="reserve" ${kind === 'reserve' ? 'selected' : ''} ${state.provisions.length === 0 ? 'disabled' : ''}>定期引当積立</option>
+              </select>
+            </div>
+            <div class="grid-2">
+              <div class="field">
+                <label>名称</label>
+                <input type="text" id="m-sc-title" class="input" required value="${esc(item ? item.title : '')}" placeholder="例：給与、ボーナス、家賃" />
+              </div>
+              <div class="field">
+                <label>予定金額 (円)</label>
+                <div class="input-yen-wrap">
+                  <span>¥</span>
+                  <input type="text" inputmode="numeric" id="m-sc-amt" class="input" required value="${item ? fmtNumStr(item.amount) : ''}" placeholder="0" oninput="fmtComma(this)" />
+                </div>
+              </div>
+            </div>
+            <div class="field">
+              <label>発生サイクル</label>
+              <div class="seg" style="width:100%;">
+                <button type="button" id="m-sc-f-mon" class="seg-btn ${freq === 'monthly' ? 'active' : ''}" style="flex:1;" onclick="setSchedFreq('monthly')">毎月定期</button>
+                <button type="button" id="m-sc-f-once" class="seg-btn ${freq === 'once' ? 'active' : ''}" style="flex:1;" onclick="setSchedFreq('once')">単発（ボーナス・旅行等）</button>
+              </div>
+              <input type="hidden" id="m-sc-freq" value="${freq}" />
+            </div>
+            <div id="m-sc-mon-box" class="grid-3 ${freq === 'monthly' ? '' : 'hidden'}">
+              <div class="field">
+                <label>毎月の日</label>
+                <input type="number" id="m-sc-day" class="input" min="1" max="31" value="${item ? (item.day || 25) : 25}" />
+              </div>
+              <div class="field">
+                <label>開始月</label>
+                <input type="month" id="m-sc-start" class="input" value="${item ? (item.startMonth || ym0) : ym0}" />
+              </div>
+              <div class="field">
+                <label>終了月(任意)</label>
+                <input type="month" id="m-sc-end" class="input" value="${item ? (item.endMonth || '') : ''}" />
+              </div>
+            </div>
+            <div id="m-sc-once-box" class="field ${freq === 'once' ? '' : 'hidden'}">
+              <label>発生予定日</label>
+              <input type="date" id="m-sc-date" class="input" value="${item && item.date ? item.date : clampDate(addMonths(ym0, 1), 15)}" />
+            </div>
+            <div id="m-sc-acc-wrap" class="field">
+              <label>入出金予定の口座</label>
+              <select id="m-sc-acc" class="select">
+                ${state.accounts.map(a => `<option value="${a.id}" ${item && item.accountId === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
+              </select>
+            </div>
+            <div id="m-sc-useprov-wrap" class="field hidden">
+              <label>引当金から充当する（任意）</label>
+              <select id="m-sc-useprov" class="select">
+                <option value="">引当金を使わない（通常支出）</option>
+                ${state.provisions.map(p => `<option value="${p.id}" ${item && item.useProvisionId === p.id ? 'selected' : ''}>${esc(p.name)} から充当</option>`).join('')}
+              </select>
+            </div>
+            <div id="m-sc-resprov-wrap" class="field hidden">
+              <label>積立先の引当枠</label>
+              <select id="m-sc-resprov" class="select">
+                ${state.provisions.map(p => `<option value="${p.id}" ${item && item.provisionId === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
+              </select>
+            </div>
+            <div class="field">
+              <label>カテゴリ</label>
+              <select id="m-sc-cat" class="select"></select>
+            </div>
+          </div>
+          <div class="modal-foot">
+            <button type="button" class="btn btn-soft btn-sm" onclick="closeModal()">キャンセル</button>
+            <button type="submit" class="btn btn-primary btn-sm">予定を保存</button>
+          </div>
+        </form>
+      `);
+      updateSchedFormUI(item ? item.category : null);
+    }
+
+    function setSchedFreq(f) {
+      document.getElementById('m-sc-freq').value = f;
+      document.getElementById('m-sc-f-mon').className = `seg-btn ${f === 'monthly' ? 'active' : ''}`;
+      document.getElementById('m-sc-f-once').className = `seg-btn ${f === 'once' ? 'active' : ''}`;
+      document.getElementById('m-sc-mon-box').classList.toggle('hidden', f !== 'monthly');
+      document.getElementById('m-sc-once-box').classList.toggle('hidden', f !== 'once');
+    }
+
+    function updateSchedFormUI(presetCat = null) {
+      const k = document.getElementById('m-sc-kind').value;
+      document.getElementById('m-sc-acc-wrap').classList.toggle('hidden', k === 'reserve');
+      document.getElementById('m-sc-useprov-wrap').classList.toggle('hidden', k !== 'expense');
+      document.getElementById('m-sc-resprov-wrap').classList.toggle('hidden', k !== 'reserve');
+      const cats = k === 'income' ? CAT_INC : (k === 'reserve' ? ['引当積立', '特別費'] : CAT_EXP);
+      const sel = document.getElementById('m-sc-cat');
+      sel.innerHTML = cats.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+      if (presetCat && cats.includes(presetCat)) sel.value = presetCat;
+    }
+
+    function submitSched(e, editId) {
+      e.preventDefault();
+      const kind = document.getElementById('m-sc-kind').value;
+      const title = document.getElementById('m-sc-title').value.trim();
+      const amount = parseYen(document.getElementById('m-sc-amt').value);
+      const freq = document.getElementById('m-sc-freq').value;
+      if (!title || amount <= 0) { showToast('名称と1円以上の金額を入力してください', true); return; }
+
+      const payload = {
+        kind, title, amount, freq,
+        category: document.getElementById('m-sc-cat').value,
+        accountId: document.getElementById('m-sc-acc').value,
+        useProvisionId: kind === 'expense' ? document.getElementById('m-sc-useprov').value : '',
+        provisionId: kind === 'reserve' ? document.getElementById('m-sc-resprov').value : ''
+      };
+      if (freq === 'once') {
+        payload.date = document.getElementById('m-sc-date').value || todayISO();
+      } else {
+        payload.day = Math.min(31, Math.max(1, Number(document.getElementById('m-sc-day').value) || 25));
+        payload.startMonth = document.getElementById('m-sc-start').value || curYM();
+        payload.endMonth = document.getElementById('m-sc-end').value || '';
+      }
+
+      if (editId) {
+        const it = state.scheduled.find(x => x.id === editId);
+        if (it) Object.assign(it, payload);
+        showToast(`予定「${title}」を更新しました`);
+      } else {
+        state.scheduled.push({ id: uid('sch'), ...payload, active: true, appliedMonths: [] });
+        showToast(`予定「${title}」を登録しました`);
+      }
+      saveState();
+      closeModal();
+      renderAll();
+    }
+
+    /* ---------------------------------------------------------
+       MODAL 6: 口座・データ管理＆1秒データ引き継ぎ
+       --------------------------------------------------------- */
+    function openDataModal() {
+      const t = getTotals();
+      openModalHTML(`
+        <div class="modal-head">
+          <h3>口座・データ管理</h3>
+          <button type="button" class="btn-icon" onclick="closeModal()">✕</button>
+        </div>
+        <div class="modal-body">
+          <!-- 1秒データ引き継ぎ -->
+          <div class="info-banner purple" style="display:flex;flex-direction:column;gap:8px;">
+            <strong>1秒データ引き継ぎ（コピー＆貼り付け復元）</strong>
+            <div style="font-size:11.5px;">更新前に「現在のデータをコピー」して控えておけば、更新後に貼り付けるだけで全データを復元できます。</div>
+            <div class="row wrap">
+              <button type="button" class="btn btn-purple btn-xs" onclick="copyBackupJSON()">現在のデータをコピー</button>
+              <button type="button" class="btn btn-soft btn-xs" onclick="document.getElementById('restore-area').classList.toggle('hidden')">貼り付けて復元する</button>
+            </div>
+            <div id="restore-area" class="hidden" style="display:flex;flex-direction:column;gap:6px;margin-top:4px;">
+              <textarea id="restore-input" class="textarea" rows="3" placeholder="コピーしたJSON文字列をここに貼り付け..."></textarea>
+              <div class="row" style="justify-content:flex-end;">
+                <button type="button" class="btn btn-primary btn-xs" onclick="restoreFromText()">このデータで復元を実行</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 口座残高の直接同期・追加・削除 -->
+          <div>
+            <div class="row-between" style="margin-bottom:8px;">
+              <strong style="font-size:13.5px;">手元キャッシュ口座（合計 ${fmtYen(t.cash)}）</strong>
+            </div>
+            <div class="stack-list">
+              ${state.accounts.map(a => `
+                <div style="padding:9px 11px;background:var(--bg);border:1px solid var(--border);border-radius:10px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;">
+                  <strong style="font-size:13.5px;flex:1;min-width:110px;">${esc(a.name)}</strong>
+                  <div class="row">
+                    <div class="input-yen-wrap" style="width:142px;">
+                      <span>¥</span>
+                      <input type="text" inputmode="text" class="input" style="padding-top:6px;padding-bottom:6px;font-size:13.5px;text-align:right;" value="${fmtNumStr(a.balance, true)}" oninput="fmtComma(this,true)" onchange="syncAccountBal('${a.id}',this.value)" />
+                    </div>
+                    ${state.accounts.length > 1 ? `<button type="button" class="btn-icon" onclick="confirmDeleteAcc('${a.id}')" title="口座削除">✕</button>` : ''}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+            <form onsubmit="addAccount(event)" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;">
+              <input type="text" id="new-acc-name" class="input" style="flex:1;min-width:140px;padding:7px 10px;font-size:13px;" required placeholder="新しい口座名（例：楽天銀行）" />
+              <div class="input-yen-wrap" style="width:130px;">
+                <span>¥</span>
+                <input type="text" inputmode="text" id="new-acc-bal" class="input" style="padding-top:7px;padding-bottom:7px;font-size:13px;" placeholder="0" oninput="fmtComma(this,true)" />
+              </div>
+              <button type="submit" class="btn btn-primary btn-xs">口座追加</button>
+            </form>
+          </div>
+
+          <!-- CSV / JSON -->
+          <div style="border-top:1px solid var(--border);padding-top:12px;">
+            <strong style="font-size:13px;display:block;margin-bottom:8px;">ファイル書き出し・読み込み</strong>
+            <div class="grid-3">
+              <button type="button" class="btn btn-soft-emerald btn-xs" onclick="exportCSV()">CSV出力 (Excel)</button>
+              <button type="button" class="btn btn-soft btn-xs" onclick="exportJSON()">JSON保存</button>
+              <label class="btn btn-soft-indigo btn-xs" style="cursor:pointer;">
+                JSON読込
+                <input type="file" accept=".json" style="display:none;" onchange="importJSON(event)" />
+              </label>
+            </div>
+          </div>
+
+          <!-- リセット -->
+          <div style="border-top:1px solid var(--border);padding-top:12px;">
+            <strong style="font-size:13px;display:block;margin-bottom:8px;">データのリセット</strong>
+            <div class="grid-2">
+              <button type="button" class="btn btn-soft-amber btn-xs" onclick="openConfirm('サンプルデータに戻しますか？','現在のデータは初期サンプルへ上書きされます。',()=>{state=createSampleState();saveState();closeModal();renderAll();showToast('サンプルデータに戻しました');})">サンプルデータ初期化</button>
+              <button type="button" class="btn btn-soft-red btn-xs" onclick="openConfirm('¥0からリセットしますか？','全履歴・負債・引当・予定がクリアされます。',()=>{state=createEmptyState();saveState();closeModal();renderAll();showToast('¥0から初期化しました');})">¥0リセット</button>
+            </div>
+          </div>
+        </div>
+      `, 'modal-lg');
+    }
+
+    function syncAccountBal(id, valStr) {
+      const a = state.accounts.find(x => x.id === id);
+      if (!a) return;
+      a.balance = parseYen(valStr, true);
+      saveState();
+      renderAll();
+      openDataModal();
+      showToast(`${a.name} の残高を ${fmtYen(a.balance)} に同期しました`);
+    }
+    function addAccount(e) {
+      e.preventDefault();
+      const name = document.getElementById('new-acc-name').value.trim();
+      const balance = parseYen(document.getElementById('new-acc-bal').value, true);
+      if (!name) return;
+      state.accounts.push({ id: uid('acc'), name, balance });
+      saveState(); renderAll(); openDataModal();
+      showToast(`口座「${name}」を追加しました`);
+    }
+    function confirmDeleteAcc(id) {
+      if (state.accounts.length <= 1) return;
+      openConfirm('この口座を削除しますか？', '削除するとこの口座残高が手元キャッシュ合計から除外されます。', () => {
+        state.accounts = state.accounts.filter(a => a.id !== id);
+        saveState(); renderAll(); openDataModal();
+        showToast('口座を削除しました');
+      });
+    }
+
+    function copyBackupJSON() {
+      const text = JSON.stringify(state);
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed'; ta.style.top = '-9999px';
+      document.body.appendChild(ta);
+      ta.select(); ta.setSelectionRange(0, text.length);
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch (_) {}
+      document.body.removeChild(ta);
+      if (ok) {
+        showToast('現在のデータをコピーしました！');
+      } else {
+        const area = document.getElementById('restore-area');
+        const inp = document.getElementById('restore-input');
+        area.classList.remove('hidden');
+        inp.value = text; inp.select();
+        showToast('枠内に表示しました。全選択してコピーしてください');
+      }
+    }
+
+    function restoreFromText() {
+      const raw = (document.getElementById('restore-input').value || '').trim();
+      if (!raw) { showToast('データを貼り付けてください', true); return; }
+      try {
+        const parsed = JSON.parse(raw);
+        if (!parsed || !Array.isArray(parsed.accounts)) throw new Error();
+        state = normalizeState(parsed);
+        ui.selectedTx.clear();
+        saveState();
+        closeModal();
+        renderAll();
+        showToast('引き継ぎデータから復元しました！');
+      } catch (_) {
+        showToast('JSON形式が正しくありません', true);
+      }
+    }
+
+    function downloadBlob(content, filename, type) {
+      const blob = new Blob([content], { type });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function exportCSV() {
+      const head = ['日付', '種別', '金額', 'カテゴリ', 'メモ', '対象'];
+      const rows = [...state.transactions].sort((a, b) => (b.date || '').localeCompare(a.date || '')).map(tx => [
+        tx.date || '', (TX_TYPES[tx.type] || {}).label || tx.type, tx.amount || 0, tx.category || '', tx.memo || '', txTargetLabel(tx)
+      ]);
+      const csv = '\uFEFF' + [head, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+      downloadBlob(csv, `realcash_lite_${todayISO()}.csv`, 'text/csv;charset=utf-8;');
+      showToast('CSVファイルを出力しました');
+    }
+
+    function exportJSON() {
+      downloadBlob(JSON.stringify(state, null, 2), `realcash_lite_backup_${todayISO()}.json`, 'application/json');
+      showToast('JSONバックアップを保存しました');
+    }
+
+    function importJSON(e) {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      const r = new FileReader();
+      r.onload = ev => {
+        try {
+          const parsed = JSON.parse(ev.target.result);
+          if (!parsed || !Array.isArray(parsed.accounts)) throw new Error();
+          state = normalizeState(parsed);
+          ui.selectedTx.clear();
+          saveState(); closeModal(); renderAll();
+          showToast('JSONバックアップから復元しました');
+        } catch (_) {
+          showToast('JSONの読み込みに失敗しました', true);
+        } finally { e.target.value = ''; }
+      };
+      r.readAsText(f);
+    }
+
+    /* ---------------------------------------------------------
+       PWA初期化（単一HTMLのままホーム画面アイコン＆全画面起動に対応）
+       --------------------------------------------------------- */
+    function initPWA() {
+      try {
+        const iconLink = document.getElementById('pwa-icon');
+        const svgHref = iconLink ? iconLink.getAttribute('href') : '';
+        const baseScope = location.href.replace(/[^/]*$/, '');
+
+        const applyManifest = (extraIcons = []) => {
+          const manifest = {
+            name: '実質キャッシュ管理 (RealCash)',
+            short_name: 'RealCash',
+            description: '手元キャッシュから確定負債・引当金を引いた実質フリー資金と将来予測を管理',
+            start_url: location.href,
+            scope: baseScope,
+            display: 'standalone',
+            orientation: 'portrait',
+            background_color: '#f8fafc',
+            theme_color: '#ffffff',
+            icons: [
+              ...extraIcons,
+              ...(svgHref ? [{ src: svgHref, sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }] : [])
+            ]
+          };
+          const blob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
+          const manifestLink = document.getElementById('pwa-manifest');
+          if (manifestLink) manifestLink.setAttribute('href', URL.createObjectURL(blob));
+        };
+
+        // 即時にSVGアイコンでマニフェストを登録
+        applyManifest();
+
+        // Android / iOSのホーム画面アイコン用に高解像度PNGアイコンも動的生成
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 512;
+        const ctx = canvas.getContext('2d');
+        if (ctx && typeof canvas.toBlob === 'function') {
+          const img = new Image();
+          img.onload = () => {
+            ctx.drawImage(img, 0, 0, 512, 512);
+            canvas.toBlob(blob => {
+              if (!blob) return;
+              const pngUrl = URL.createObjectURL(blob);
+              const appleIcon = document.getElementById('pwa-apple-icon');
+              if (appleIcon) appleIcon.setAttribute('href', pngUrl);
+              applyManifest([{ src: pngUrl, sizes: '512x512', type: 'image/png', purpose: 'any maskable' }]);
+            }, 'image/png');
+          };
+          if (svgHref) img.src = svgHref;
+        }
+      } catch (err) {
+        console.warn('PWA初期化スキップ:', err);
+      }
+    }
+
+    /* ---------------------------------------------------------
+       アプリ起動処理
+       --------------------------------------------------------- */
+    window.addEventListener('DOMContentLoaded', () => {
+      try {
+        initPWA();
+        loadState();
+        ui.expandedMonths.add(curYM());
+        renderAll();
+      } catch (err) {
+        console.error(err);
+        showToast('初期化中にエラーが発生しました', true);
+      }
+    });
+  </script>
+</body>
+</html>
